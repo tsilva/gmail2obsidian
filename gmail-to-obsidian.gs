@@ -2,7 +2,7 @@
  * Gmail-to-Obsidian Bulk Flush Script
  *
  * Reads Gmail threads from configured labels, formats them as Obsidian
- * checkbox tasks with Gmail permalinks, and appends them to target files
+ * checkbox tasks with Gmail permalinks, and prepends them to target files
  * in your vault on Google Drive. Removes the label (and unstars) after
  * processing. Supports cross-account setups via shared Drive folders.
  *
