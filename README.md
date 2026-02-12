@@ -51,10 +51,10 @@ Each email becomes an Obsidian checkbox under a dated header:
 
 ### 2. Configure Routes
 
-Edit the `CONFIG` object to match your setup:
+Edit the `DEFAULT_CONFIG` object in the script to match your setup:
 
 ```javascript
-const CONFIG = {
+const DEFAULT_CONFIG = {
   VAULT_FOLDER: "Obsidian/YourVault",  // Google Drive path to vault root
   ROUTES: [
     { label: "obsidian",         file: "inbox.md" },
@@ -63,6 +63,8 @@ const CONFIG = {
   ],
 };
 ```
+
+On first run, this config is automatically saved to **Script Properties**. After that, you can edit the config directly in **Project Settings > Script Properties** without redeploying.
 
 ### 3. Create Gmail Labels
 
@@ -85,6 +87,10 @@ Save the web app URL as a browser bookmark. Your workflow becomes:
 
 ## ⚙️ Configuration
 
+Config is stored as a JSON string under the `CONFIG` key in **Script Properties** (`Project Settings > Script Properties`). It's auto-seeded from `DEFAULT_CONFIG` on first run. Changes to Script Properties take effect immediately — no redeployment needed.
+
+To restore defaults, run `resetConfig()` from the Apps Script editor.
+
 | Option | Description | Default |
 |--------|-------------|---------|
 | `VAULT_FOLDER` | Google Drive path to your Obsidian vault root | Required |
@@ -101,7 +107,7 @@ If your Obsidian vault lives in a different Google account's Drive:
 2. Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER`:
 
 ```javascript
-const CONFIG = {
+const DEFAULT_CONFIG = {
   VAULT_FOLDER_ID: "1AbCdEf...",  // Folder ID from the shared folder's URL
   GMAIL_ACCOUNT_INDEX: 1,          // Your Gmail account index
   ROUTES: [
@@ -127,7 +133,7 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 ```
 
 1. `doGet()` handles the web app request
-2. `flushToObsidian()` iterates each route in `CONFIG.ROUTES`
+2. `flushToObsidian()` loads config from Script Properties and iterates each route
 3. For each route, reads all threads with the matching Gmail label
 4. Formats each thread as a Markdown checkbox with subject, permalink, sender, and date
 5. Prepends the formatted block to the target file in your vault
@@ -151,9 +157,9 @@ The script includes several defense-in-depth measures:
 | "Vault folder not found" | Verify `VAULT_FOLDER` path matches your Drive folder structure exactly |
 | "File not found" | Ensure target `.md` files exist in your vault before running |
 | Wrong Gmail account in permalinks | Adjust `GMAIL_ACCOUNT_INDEX` (0 = default account, 1 = second, etc.) |
-| No emails processed | Check that Gmail labels match `CONFIG.ROUTES` label names exactly |
+| No emails processed | Check that Gmail labels match the `ROUTES` label names in Script Properties exactly |
 | Permission errors with shared folders | Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER` for cross-account access |
-| "Batch cap reached" warning | Run the web app again to process remaining threads, or increase `MAX_THREADS` in CONFIG |
+| "Batch cap reached" warning | Run the web app again to process remaining threads, or increase `MAX_THREADS` in Script Properties |
 
 ## 📄 License
 

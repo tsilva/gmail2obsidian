@@ -11,13 +11,15 @@
  *   2. Paste this script
  *   3. Enable the manifest: Project Settings → Show "appsscript.json" manifest file
  *   4. Replace appsscript.json contents with the provided manifest
- *   5. Set CONFIG.VAULT_FOLDER and CONFIG.ROUTES to match your setup
+ *   5. Edit DEFAULT_CONFIG to match your setup (VAULT_FOLDER, ROUTES)
  *   6. Deploy → Web App → Execute as "Me" → Access "Only myself"
- *   7. Copy the web app URL → Bookmark it in your browser
- *   8. During triage: select emails → apply labels → click bookmark
+ *   7. Click the web app URL once — this seeds your config into Script Properties
+ *   8. To change config later: Project Settings → Script Properties → edit CONFIG JSON
+ *   9. Copy the web app URL → Bookmark it in your browser
+ *  10. During triage: select emails → apply labels → click bookmark
  */
 
-const CONFIG = {
+const DEFAULT_CONFIG = {
   VAULT_FOLDER: "Obsidian/YourVault", // Google Drive path to vault root
   // VAULT_FOLDER_ID: "abc123...",     // Optional: Google Drive folder ID (for shared/cross-account folders)
   // GMAIL_ACCOUNT_INDEX: 0,           // Optional: Gmail account index for permalinks (default: 0)
@@ -28,6 +30,28 @@ const CONFIG = {
     { label: "obsidian/project2", file: "project2/inbox.md" },
   ],
 };
+
+/**
+ * Reads config from Script Properties. On first run, seeds from DEFAULT_CONFIG.
+ */
+function getConfig() {
+  const props = PropertiesService.getScriptProperties();
+  const stored = props.getProperty("CONFIG");
+  if (stored) {
+    return JSON.parse(stored);
+  }
+  // First run: seed Script Properties from defaults
+  props.setProperty("CONFIG", JSON.stringify(DEFAULT_CONFIG));
+  return DEFAULT_CONFIG;
+}
+
+/**
+ * Resets Script Properties config back to DEFAULT_CONFIG.
+ * Run from the Apps Script editor to restore defaults.
+ */
+function resetConfig() {
+  PropertiesService.getScriptProperties().setProperty("CONFIG", JSON.stringify(DEFAULT_CONFIG));
+}
 
 /**
  * Web app entry point. Calls flushToObsidian and returns an HTML summary.
@@ -74,18 +98,18 @@ function doGet() {
 }
 
 /**
- * Validates CONFIG at startup. Throws with a clear message if misconfigured.
+ * Validates config at startup. Throws with a clear message if misconfigured.
  */
-function validateConfig() {
-  if (!CONFIG.ROUTES || !Array.isArray(CONFIG.ROUTES) || CONFIG.ROUTES.length === 0) {
+function validateConfig(config) {
+  if (!config.ROUTES || !Array.isArray(config.ROUTES) || config.ROUTES.length === 0) {
     throw new Error("CONFIG.ROUTES must be a non-empty array of { label, file } objects.");
   }
-  for (let i = 0; i < CONFIG.ROUTES.length; i++) {
-    const route = CONFIG.ROUTES[i];
+  for (let i = 0; i < config.ROUTES.length; i++) {
+    const route = config.ROUTES[i];
     if (!route.label) throw new Error("CONFIG.ROUTES[" + i + "] is missing 'label'.");
     if (!route.file) throw new Error("CONFIG.ROUTES[" + i + "] is missing 'file'.");
   }
-  if (!CONFIG.VAULT_FOLDER && !CONFIG.VAULT_FOLDER_ID) {
+  if (!config.VAULT_FOLDER && !config.VAULT_FOLDER_ID) {
     throw new Error("CONFIG must set either VAULT_FOLDER or VAULT_FOLDER_ID.");
   }
 }
@@ -95,12 +119,13 @@ function validateConfig() {
  * files, clean up labels/stars. Returns array of per-route results.
  */
 function flushToObsidian() {
-  validateConfig();
+  const config = getConfig();
+  validateConfig(config);
   const results = [];
-  const gmailAccountIndex = CONFIG.GMAIL_ACCOUNT_INDEX || 0;
+  const gmailAccountIndex = config.GMAIL_ACCOUNT_INDEX || 0;
 
-  for (let r = 0; r < CONFIG.ROUTES.length; r++) {
-    const route = CONFIG.ROUTES[r];
+  for (let r = 0; r < config.ROUTES.length; r++) {
+    const route = config.ROUTES[r];
     try {
       const label = GmailApp.getUserLabelByName(route.label);
       if (!label) {
@@ -108,7 +133,7 @@ function flushToObsidian() {
         continue;
       }
 
-      const maxThreads = CONFIG.MAX_THREADS || 50;
+      const maxThreads = config.MAX_THREADS || 50;
       const threads = label.getThreads(0, maxThreads);
       if (threads.length === 0) {
         results.push({ label: route.label, file: route.file, count: 0, subjects: [] });
@@ -154,7 +179,7 @@ function flushToObsidian() {
       const header = "## Flushed " + today;
       const block = header + "\n" + entries.join("\n") + "\n\n";
 
-      const file = getFileByPath(route.file);
+      const file = getFileByPath(route.file, config);
       const existing = file.getBlob().getDataAsString();
       file.setContent(block + existing);
 
@@ -176,11 +201,11 @@ function flushToObsidian() {
  * Uses VAULT_FOLDER_ID (direct access, works with shared folders) if set,
  * otherwise navigates the VAULT_FOLDER path from the Drive root.
  */
-function getVaultFolder() {
-  if (CONFIG.VAULT_FOLDER_ID) {
-    return DriveApp.getFolderById(CONFIG.VAULT_FOLDER_ID);
+function getVaultFolder(config) {
+  if (config.VAULT_FOLDER_ID) {
+    return DriveApp.getFolderById(config.VAULT_FOLDER_ID);
   }
-  const parts = CONFIG.VAULT_FOLDER.split("/");
+  const parts = config.VAULT_FOLDER.split("/");
   let folder = DriveApp.getRootFolder();
   for (let i = 0; i < parts.length; i++) {
     const folders = folder.getFoldersByName(parts[i]);
@@ -194,10 +219,10 @@ function getVaultFolder() {
  * Navigates the Google Drive folder path to find a file.
  * relativePath is relative to the vault root (e.g., "Areas/Reading/Inbox.md").
  */
-function getFileByPath(relativePath) {
+function getFileByPath(relativePath, config) {
   const parts = relativePath.split("/");
   const fileName = parts.pop();
-  let folder = getVaultFolder();
+  let folder = getVaultFolder(config);
 
   for (let i = 0; i < parts.length; i++) {
     const folders = folder.getFoldersByName(parts[i]);
