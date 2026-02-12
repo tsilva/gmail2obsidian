@@ -4,7 +4,7 @@
  * Reads Gmail threads from configured labels, formats them as Obsidian
  * checkbox tasks with Gmail permalinks, and appends them to target files
  * in your vault on Google Drive. Removes the label (and unstars) after
- * processing.
+ * processing. Supports cross-account setups via shared Drive folders.
  *
  * Setup:
  *   1. Go to https://script.google.com → New Project
@@ -17,6 +17,8 @@
 
 const CONFIG = {
   VAULT_FOLDER: "Obsidian/YourVault", // Google Drive path to vault root
+  // VAULT_FOLDER_ID: "abc123...",     // Optional: Google Drive folder ID (for shared/cross-account folders)
+  // GMAIL_ACCOUNT_INDEX: 0,           // Optional: Gmail account index for permalinks (default: 0)
   ROUTES: [
     { label: "to-obsidian",         file: "Inbox.md" },
     { label: "to-obsidian/reading", file: "Areas/Reading/Inbox.md" },
@@ -70,6 +72,7 @@ function doGet() {
  */
 function flushToObsidian() {
   const results = [];
+  const gmailAccountIndex = CONFIG.GMAIL_ACCOUNT_INDEX || 0;
 
   for (let r = 0; r < CONFIG.ROUTES.length; r++) {
     const route = CONFIG.ROUTES[r];
@@ -100,7 +103,7 @@ function flushToObsidian() {
           Session.getScriptTimeZone(),
           "yyyy-MM-dd"
         );
-        const permalink = "https://mail.google.com/mail/u/0/#all/" + thread.getId();
+        const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + thread.getId();
 
         entries.push("- [ ] [" + subject + "](" + permalink + ") (from: " + sender + ", " + date + ")");
         subjects.push(subject);
@@ -139,26 +142,44 @@ function flushToObsidian() {
 }
 
 /**
+ * Resolves the vault root folder from Google Drive.
+ * Uses VAULT_FOLDER_ID (direct access, works with shared folders) if set,
+ * otherwise navigates the VAULT_FOLDER path from the Drive root.
+ */
+function getVaultFolder() {
+  if (CONFIG.VAULT_FOLDER_ID) {
+    return DriveApp.getFolderById(CONFIG.VAULT_FOLDER_ID);
+  }
+  const parts = CONFIG.VAULT_FOLDER.split("/");
+  let folder = DriveApp.getRootFolder();
+  for (let i = 0; i < parts.length; i++) {
+    const folders = folder.getFoldersByName(parts[i]);
+    if (!folders.hasNext()) throw new Error("Vault folder not found: " + parts.slice(0, i + 1).join("/"));
+    folder = folders.next();
+  }
+  return folder;
+}
+
+/**
  * Navigates the Google Drive folder path to find a file.
- * relativePath is relative to VAULT_FOLDER (e.g., "Areas/Reading/Inbox.md").
+ * relativePath is relative to the vault root (e.g., "Areas/Reading/Inbox.md").
  */
 function getFileByPath(relativePath) {
-  const fullPath = CONFIG.VAULT_FOLDER + "/" + relativePath;
-  const parts = fullPath.split("/");
+  const parts = relativePath.split("/");
   const fileName = parts.pop();
-  let folder = DriveApp.getRootFolder();
+  let folder = getVaultFolder();
 
   for (let i = 0; i < parts.length; i++) {
     const folders = folder.getFoldersByName(parts[i]);
     if (!folders.hasNext()) {
-      throw new Error("Folder not found: " + parts.slice(0, i + 1).join("/"));
+      throw new Error("Folder not found: " + parts[i] + " in " + relativePath);
     }
     folder = folders.next();
   }
 
   const files = folder.getFilesByName(fileName);
   if (!files.hasNext()) {
-    throw new Error(fileName + " not found in " + parts.join("/"));
+    throw new Error(fileName + " not found in " + relativePath);
   }
   return files.next();
 }
