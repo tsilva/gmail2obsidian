@@ -5,7 +5,7 @@
   [![License](https://img.shields.io/github/license/tsilva/gmail2obsidian?style=flat)](LICENSE)
   [![Lines of Code](https://img.shields.io/badge/lines-~210-blue?style=flat)]()
 
-  **📬 Flush labeled Gmail threads into Obsidian task files with one click ✅**
+  **📬 Flush labeled Gmail threads into [Obsidian](https://obsidian.md/) task files with one click ✅**
 
   [Setup Guide](#-setup) · [Configuration](#%EF%B8%8F-configuration) · [How It Works](#-how-it-works)
 </div>
@@ -16,7 +16,7 @@
 
 **The Pain:** You triage emails all day, but action items get buried in your inbox. Copy-pasting into your task manager is tedious and breaks your flow.
 
-**The Solution:** gmail2obsidian is a Google Apps Script that turns Gmail labels into Obsidian checkboxes. Label emails during triage, click a bookmarked URL, and they appear as tasks in your vault — complete with Gmail permalinks, sender info, and dates.
+**The Solution:** gmail2obsidian is a Google Apps Script that turns Gmail labels into [Obsidian](https://obsidian.md/) checkboxes. Label emails during triage, click a bookmarked URL, and they appear as tasks in your vault — complete with Gmail permalinks, sender info, and dates.
 
 **The Result:** Zero copy-paste. One-click flush. Every actionable email lands in the right Obsidian file, ready to work.
 
