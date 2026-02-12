@@ -8,9 +8,9 @@ Gmail-to-Obsidian is a Google Apps Script that bulk-flushes Gmail emails into Ob
 
 ## Architecture
 
-Single-file Google Apps Script (`gmail2obsidian.gs`, ~210 lines):
+Google Apps Script split across two files (`gmail2obsidian.gs` + `config.gs`):
 
-- **CONFIG** — Routes mapping Gmail labels to vault file paths, plus optional cross-account settings (`VAULT_FOLDER_ID`, `GMAIL_ACCOUNT_INDEX`)
+- **CONFIG** (`config.gs`) — Routes mapping Gmail labels to vault file paths, plus optional cross-account settings (`VAULT_FOLDER_ID`, `GMAIL_ACCOUNT_INDEX`). Copied from `config.example.gs` during setup; gitignored but pushed by clasp.
 - **doGet()** — Web app entry point; calls `flushToObsidian()` and returns an HTML summary page
 - **flushToObsidian()** — Core logic: iterates routes, reads labeled threads, formats entries, prepends to target files, removes labels/unstars
 - **getVaultFolder() / getFileByPath()** — Google Drive navigation helpers (support both path-based and folder-ID-based access)

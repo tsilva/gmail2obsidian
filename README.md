@@ -25,6 +25,7 @@
 - **Multi-label routing** — Map different Gmail labels to different vault files (e.g., `to-obsidian/reading` → `Areas/Reading/Inbox.md`)
 - **Gmail permalinks** — Each task links back to the original email thread
 - **Prepend mode** — Newest tasks always appear at the top of the file
+- **Auto-archive** — Processed threads are archived in Gmail automatically
 - **Idempotent** — Labels are removed after processing, so re-running is safe
 - **Cross-account support** — Works with shared Drive folders across Google accounts
 - **Graceful error handling** — One broken route won't stop the others
@@ -50,7 +51,7 @@ Each email becomes an Obsidian checkbox under a dated header:
 ### 2. Set Up clasp (CLI Deployment)
 
 1. Install [clasp](https://github.com/google/clasp): `npm install -g @google/clasp`
-2. Run `make setup` — this installs the pre-commit hook and creates a `.clasp.json` template
+2. Run `make setup` — this installs the pre-commit hook, creates a `.clasp.json` template, and copies `config.example.gs` to `config.gs`
 3. Edit `.clasp.json` and replace `YOUR_SCRIPT_ID_HERE` with your Script ID
 4. Run `make login` to authenticate with Google
 5. Enable the [Apps Script API](https://script.google.com/home/usersettings)
@@ -58,10 +59,10 @@ Each email becomes an Obsidian checkbox under a dated header:
 
 ### 3. Configure Routes
 
-Edit the `DEFAULT_CONFIG` object in the script to match your setup:
+Edit `config.gs` to match your setup:
 
 ```javascript
-const DEFAULT_CONFIG = {
+const CONFIG = {
   VAULT_FOLDER: "Obsidian/YourVault",  // Google Drive path to vault root
   ROUTES: [
     { label: "obsidian",         file: "inbox.md" },
@@ -71,7 +72,7 @@ const DEFAULT_CONFIG = {
 };
 ```
 
-On first run, this config is automatically saved to **Script Properties**. After that, you can edit the config directly in **Project Settings > Script Properties** without redeploying.
+`config.gs` is gitignored but pushed to Apps Script by clasp. To update config after initial deployment, edit `config.gs` and run `make push`.
 
 ### 4. Create Gmail Labels
 
@@ -94,9 +95,7 @@ Save the web app URL as a browser bookmark. Your workflow becomes:
 
 ## ⚙️ Configuration
 
-Config is stored as a JSON string under the `CONFIG` key in **Script Properties** (`Project Settings > Script Properties`). It's auto-seeded from `DEFAULT_CONFIG` on first run. Changes to Script Properties take effect immediately — no redeployment needed.
-
-To restore defaults, run `resetConfig()` from the Apps Script editor.
+Config lives in `config.gs` (copied from `config.example.gs` during `make setup`). This file is gitignored but pushed to Apps Script by clasp. To change config, edit `config.gs` and run `make push`.
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -114,7 +113,7 @@ If your Obsidian vault lives in a different Google account's Drive:
 2. Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER`:
 
 ```javascript
-const DEFAULT_CONFIG = {
+const CONFIG = {
   VAULT_FOLDER_ID: "1AbCdEf...",  // Folder ID from the shared folder's URL
   GMAIL_ACCOUNT_INDEX: 1,          // Your Gmail account index
   ROUTES: [
@@ -135,16 +134,16 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 │              │         │                  │           │                      │
 └─────────────┘         └──────────────────┘           └──────────────────────┘
        │                         │
-       └─── remove labels ◄─────┘
-             & unstar
+       └── remove labels, ◄─────┘
+           archive & unstar
 ```
 
 1. `doGet()` handles the web app request
-2. `flushToObsidian()` loads config from Script Properties and iterates each route
+2. `flushToObsidian()` loads config from `config.gs` and iterates each route
 3. For each route, reads all threads with the matching Gmail label
 4. Formats each thread as a Markdown checkbox with subject and permalink
 5. Prepends the formatted block to the target file in your vault
-6. Removes the label and unstars messages to prevent reprocessing
+6. Removes the label, archives the thread, and unstars messages to prevent reprocessing
 7. Returns an HTML summary of what was flushed
 
 ## 🛠️ Development
@@ -169,7 +168,7 @@ The script includes several defense-in-depth measures:
 
 - **Explicit OAuth scopes** — `appsscript.json` locks permissions to the minimum needed (`gmail.modify`, `drive`, `script.scriptapp`), preventing silent scope escalation
 - **Markdown injection protection** — Email subjects are escaped to prevent crafted emails from injecting arbitrary URLs into task links
-- **Clickjacking prevention** — HTML output sets `X-Frame-Options: DENY` to block iframe embedding
+- **Clickjacking prevention** — HTML output sets `X-Frame-Options: DEFAULT` to restrict iframe embedding
 - **Thread batch cap** — `MAX_THREADS` limits threads processed per run, preventing execution timeout from leaving partial state
 - **Startup config validation** — Misconfigured routes or missing vault paths fail fast with clear error messages
 
@@ -180,9 +179,9 @@ The script includes several defense-in-depth measures:
 | "Vault folder not found" | Verify `VAULT_FOLDER` path matches your Drive folder structure exactly |
 | "File not found" | Ensure target `.md` files exist in your vault before running |
 | Wrong Gmail account in permalinks | Adjust `GMAIL_ACCOUNT_INDEX` (0 = default account, 1 = second, etc.) |
-| No emails processed | Check that Gmail labels match the `ROUTES` label names in Script Properties exactly |
+| No emails processed | Check that Gmail labels match the `ROUTES` label names in `config.gs` exactly |
 | Permission errors with shared folders | Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER` for cross-account access |
-| "Batch cap reached" warning | Run the web app again to process remaining threads, or increase `MAX_THREADS` in Script Properties |
+| "Batch cap reached" warning | Run the web app again to process remaining threads, or increase `MAX_THREADS` in `config.gs` |
 
 ## 📄 License
 
