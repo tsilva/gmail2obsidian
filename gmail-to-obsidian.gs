@@ -94,7 +94,7 @@ function doGet() {
   html += "</body></html>";
 
   return HtmlService.createHtmlOutput(html)
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY);
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 
 /**
@@ -160,6 +160,7 @@ function flushToObsidian() {
         subjects.push(subject);
 
         thread.removeLabel(label);
+        thread.moveToArchive();
 
         if (thread.hasStarredMessages()) {
           const messages = thread.getMessages();
