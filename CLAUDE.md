@@ -20,12 +20,14 @@ Google APIs used: `GmailApp`, `DriveApp`, `HtmlService`, `Utilities`, `Session`.
 
 ## Development
 
-There is no local build, test, or lint toolchain. The script runs entirely in Google Apps Script:
+The script runs in Google Apps Script. Deployment uses [clasp](https://github.com/google/clasp) (Google's CLI for Apps Script):
 
-1. Edit `gmail2obsidian.gs` locally
-2. Paste into [script.google.com](https://script.google.com) to deploy
-3. Deploy as Web App (Execute as "Me", Access "Only myself")
+1. One-time setup: `make setup`, then follow the printed instructions
+2. Edit `gmail2obsidian.gs` locally
+3. `make push` to upload, or `make deploy` to upload and create a versioned deployment
 4. Test by clicking the deployed web app URL
+
+Other commands: `make open` (open in browser), `make login` (re-authenticate).
 
 ## Key Conventions
 

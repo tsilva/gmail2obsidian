@@ -45,11 +45,18 @@ Each email becomes an Obsidian checkbox under a dated header:
 ### 1. Create the Script
 
 1. Go to [script.google.com](https://script.google.com) → **New Project**
-2. Delete the default code and paste the contents of [`gmail2obsidian.gs`](gmail2obsidian.gs)
-3. In the editor, click **Project Settings** (⚙️) → check **Show "appsscript.json" manifest file in editor**
-4. Open the `appsscript.json` tab and replace its contents with [`appsscript.json`](appsscript.json)
+2. Copy the **Script ID** from **Project Settings** (⚙️) — you'll need it in step 3
 
-### 2. Configure Routes
+### 2. Set Up clasp (CLI Deployment)
+
+1. Install [clasp](https://github.com/google/clasp): `npm install -g @google/clasp`
+2. Run `make setup` — this installs the pre-commit hook and creates a `.clasp.json` template
+3. Edit `.clasp.json` and replace `YOUR_SCRIPT_ID_HERE` with your Script ID
+4. Run `make login` to authenticate with Google
+5. Enable the [Apps Script API](https://script.google.com/home/usersettings)
+6. Run `make push` to upload the script and manifest
+
+### 3. Configure Routes
 
 Edit the `DEFAULT_CONFIG` object in the script to match your setup:
 
@@ -66,11 +73,11 @@ const DEFAULT_CONFIG = {
 
 On first run, this config is automatically saved to **Script Properties**. After that, you can edit the config directly in **Project Settings > Script Properties** without redeploying.
 
-### 3. Create Gmail Labels
+### 4. Create Gmail Labels
 
 In Gmail, create labels matching your routes (e.g., `to-obsidian`, `to-obsidian/reading`). Nested labels work using `/` separators.
 
-### 4. Deploy as Web App
+### 5. Deploy as Web App
 
 1. Click **Deploy** → **New deployment**
 2. Type: **Web app**
@@ -79,7 +86,7 @@ In Gmail, create labels matching your routes (e.g., `to-obsidian`, `to-obsidian/
 5. Click **Deploy** and authorize the requested permissions
 6. Copy the web app URL
 
-### 5. Bookmark & Use
+### 6. Bookmark & Use
 
 Save the web app URL as a browser bookmark. Your workflow becomes:
 
@@ -139,6 +146,22 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 5. Prepends the formatted block to the target file in your vault
 6. Removes the label and unstars messages to prevent reprocessing
 7. Returns an HTML summary of what was flushed
+
+## 🛠️ Development
+
+After initial setup, the development workflow is:
+
+1. Edit `gmail2obsidian.gs` locally
+2. `make push` to upload, or `make deploy` to upload and create a versioned deployment
+3. Test by clicking the web app URL
+
+| Command | What it does |
+|---------|-------------|
+| `make push` | Upload script to Apps Script |
+| `make deploy` | Push + create timestamped deployment |
+| `make open` | Open project in browser |
+| `make login` | Re-authenticate with Google |
+| `make setup` | Install git hooks + create `.clasp.json` template |
 
 ## 🔒 Security
 

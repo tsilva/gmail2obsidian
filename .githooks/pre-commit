@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Block credential and local config files from being committed
+BLOCKED=".clasprc.json .clasp.json"
+for file in $BLOCKED; do
+  if git diff --cached --name-only | grep -qx "$file"; then
+    echo "ERROR: $file must not be committed (contains credentials or local config)"
+    exit 1
+  fi
+done
