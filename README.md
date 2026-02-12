@@ -45,7 +45,7 @@ Each email becomes an Obsidian checkbox under a dated header:
 ### 1. Create the Script
 
 1. Go to [script.google.com](https://script.google.com) → **New Project**
-2. Delete the default code and paste the contents of [`gmail-to-obsidian.gs`](gmail-to-obsidian.gs)
+2. Delete the default code and paste the contents of [`gmail2obsidian.gs`](gmail2obsidian.gs)
 3. In the editor, click **Project Settings** (⚙️) → check **Show "appsscript.json" manifest file in editor**
 4. Open the `appsscript.json` tab and replace its contents with [`appsscript.json`](appsscript.json)
 
