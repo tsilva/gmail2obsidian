@@ -9,16 +9,19 @@
  * Setup:
  *   1. Go to https://script.google.com → New Project
  *   2. Paste this script
- *   3. Set CONFIG.VAULT_FOLDER and CONFIG.ROUTES to match your setup
- *   4. Deploy → Web App → Execute as "Me" → Access "Only myself"
- *   5. Copy the web app URL → Bookmark it in your browser
- *   6. During triage: select emails → apply labels → click bookmark
+ *   3. Enable the manifest: Project Settings → Show "appsscript.json" manifest file
+ *   4. Replace appsscript.json contents with the provided manifest
+ *   5. Set CONFIG.VAULT_FOLDER and CONFIG.ROUTES to match your setup
+ *   6. Deploy → Web App → Execute as "Me" → Access "Only myself"
+ *   7. Copy the web app URL → Bookmark it in your browser
+ *   8. During triage: select emails → apply labels → click bookmark
  */
 
 const CONFIG = {
   VAULT_FOLDER: "Obsidian/YourVault", // Google Drive path to vault root
   // VAULT_FOLDER_ID: "abc123...",     // Optional: Google Drive folder ID (for shared/cross-account folders)
   // GMAIL_ACCOUNT_INDEX: 0,           // Optional: Gmail account index for permalinks (default: 0)
+  MAX_THREADS: 50,                     // Max threads per label per run (prevents execution timeout)
   ROUTES: [
     { label: "obsidian", file: "inbox.md" },
     { label: "obsidian/project1", file: "project1/inbox.md" },
@@ -52,6 +55,9 @@ function doGet() {
     if (r.error) {
       html += "<div class='error'>Error [" + escapeHtml(r.label) + " → " + escapeHtml(r.file) + "]: " + escapeHtml(r.error) + "</div>";
     }
+    if (r.warning) {
+      html += "<div class='error'>" + escapeHtml(r.warning) + "</div>";
+    }
     if (r.count > 0) {
       html += "<h2>" + escapeHtml(r.file) + " (" + r.count + ")</h2><ul>";
       for (let j = 0; j < r.subjects.length; j++) {
@@ -63,7 +69,25 @@ function doGet() {
 
   html += "</body></html>";
 
-  return HtmlService.createHtmlOutput(html);
+  return HtmlService.createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY);
+}
+
+/**
+ * Validates CONFIG at startup. Throws with a clear message if misconfigured.
+ */
+function validateConfig() {
+  if (!CONFIG.ROUTES || !Array.isArray(CONFIG.ROUTES) || CONFIG.ROUTES.length === 0) {
+    throw new Error("CONFIG.ROUTES must be a non-empty array of { label, file } objects.");
+  }
+  for (let i = 0; i < CONFIG.ROUTES.length; i++) {
+    const route = CONFIG.ROUTES[i];
+    if (!route.label) throw new Error("CONFIG.ROUTES[" + i + "] is missing 'label'.");
+    if (!route.file) throw new Error("CONFIG.ROUTES[" + i + "] is missing 'file'.");
+  }
+  if (!CONFIG.VAULT_FOLDER && !CONFIG.VAULT_FOLDER_ID) {
+    throw new Error("CONFIG must set either VAULT_FOLDER or VAULT_FOLDER_ID.");
+  }
 }
 
 /**
@@ -71,6 +95,7 @@ function doGet() {
  * files, clean up labels/stars. Returns array of per-route results.
  */
 function flushToObsidian() {
+  validateConfig();
   const results = [];
   const gmailAccountIndex = CONFIG.GMAIL_ACCOUNT_INDEX || 0;
 
@@ -83,7 +108,8 @@ function flushToObsidian() {
         continue;
       }
 
-      const threads = label.getThreads();
+      const maxThreads = CONFIG.MAX_THREADS || 50;
+      const threads = label.getThreads(0, maxThreads);
       if (threads.length === 0) {
         results.push({ label: route.label, file: route.file, count: 0, subjects: [] });
         continue;
@@ -105,7 +131,7 @@ function flushToObsidian() {
         );
         const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + thread.getId();
 
-        entries.push("- [ ] [" + subject + "](" + permalink + ") (from: " + sender + ", " + date + ")");
+        entries.push("- [ ] [" + escapeMd(subject) + "](" + permalink + ") (from: " + escapeMd(sender) + ", " + date + ")");
         subjects.push(subject);
 
         thread.removeLabel(label);
@@ -132,7 +158,11 @@ function flushToObsidian() {
       const existing = file.getBlob().getDataAsString();
       file.setContent(block + existing);
 
-      results.push({ label: route.label, file: route.file, count: threads.length, subjects: subjects });
+      const result = { label: route.label, file: route.file, count: threads.length, subjects: subjects };
+      if (threads.length >= maxThreads) {
+        result.warning = "Batch cap reached (" + maxThreads + "). More threads may remain — run again to continue.";
+      }
+      results.push(result);
     } catch (e) {
       results.push({ label: route.label, file: route.file, count: 0, subjects: [], error: e.message });
     }
@@ -194,6 +224,18 @@ function extractSenderName(fromField) {
   }
   // Fallback: return the whole field (usually just an email address)
   return fromField.replace(/<[^>]+>/, "").trim() || fromField;
+}
+
+/**
+ * Escapes characters that have special meaning in Markdown link syntax.
+ * Prevents crafted email subjects from injecting arbitrary URLs.
+ */
+function escapeMd(text) {
+  return text
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
 }
 
 /**

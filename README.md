@@ -46,6 +46,8 @@ Each email becomes an Obsidian checkbox under a dated header:
 
 1. Go to [script.google.com](https://script.google.com) → **New Project**
 2. Delete the default code and paste the contents of [`gmail-to-obsidian.gs`](gmail-to-obsidian.gs)
+3. In the editor, click **Project Settings** (⚙️) → check **Show "appsscript.json" manifest file in editor**
+4. Open the `appsscript.json` tab and replace its contents with [`appsscript.json`](appsscript.json)
 
 ### 2. Configure Routes
 
@@ -88,6 +90,7 @@ Save the web app URL as a browser bookmark. Your workflow becomes:
 | `VAULT_FOLDER` | Google Drive path to your Obsidian vault root | Required |
 | `VAULT_FOLDER_ID` | Drive folder ID (for shared/cross-account folders) | — |
 | `GMAIL_ACCOUNT_INDEX` | Account index for permalink URLs (`/u/0`, `/u/1`, etc.) | `0` |
+| `MAX_THREADS` | Max threads processed per label per run (prevents timeout) | `50` |
 | `ROUTES` | Array of `{ label, file }` mappings | Required |
 
 ### Cross-Account Setup
@@ -131,6 +134,16 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 6. Removes the label and unstars messages to prevent reprocessing
 7. Returns an HTML summary of what was flushed
 
+## 🔒 Security
+
+The script includes several defense-in-depth measures:
+
+- **Explicit OAuth scopes** — `appsscript.json` locks permissions to the minimum needed (`gmail.modify`, `drive`, `script.scriptapp`), preventing silent scope escalation
+- **Markdown injection protection** — Email subjects and sender names are escaped to prevent crafted emails from injecting arbitrary URLs into task links
+- **Clickjacking prevention** — HTML output sets `X-Frame-Options: DENY` to block iframe embedding
+- **Thread batch cap** — `MAX_THREADS` limits threads processed per run, preventing execution timeout from leaving partial state
+- **Startup config validation** — Misconfigured routes or missing vault paths fail fast with clear error messages
+
 ## 🐛 Troubleshooting
 
 | Issue | Solution |
@@ -140,6 +153,7 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 | Wrong Gmail account in permalinks | Adjust `GMAIL_ACCOUNT_INDEX` (0 = default account, 1 = second, etc.) |
 | No emails processed | Check that Gmail labels match `CONFIG.ROUTES` label names exactly |
 | Permission errors with shared folders | Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER` for cross-account access |
+| "Batch cap reached" warning | Run the web app again to process remaining threads, or increase `MAX_THREADS` in CONFIG |
 
 ## 📄 License
 
