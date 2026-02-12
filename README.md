@@ -16,7 +16,7 @@
 
 **The Pain:** You triage emails all day, but action items get buried in your inbox. Copy-pasting into your task manager is tedious and breaks your flow.
 
-**The Solution:** gmail2obsidian is a Google Apps Script that turns Gmail labels into [Obsidian](https://obsidian.md/) checkboxes. Label emails during triage, click a bookmarked URL, and they appear as tasks in your vault — complete with Gmail permalinks, sender info, and dates.
+**The Solution:** gmail2obsidian is a Google Apps Script that turns Gmail labels into [Obsidian](https://obsidian.md/) checkboxes. Label emails during triage, click a bookmarked URL, and they appear as tasks in your vault — complete with Gmail permalinks.
 
 **The Result:** Zero copy-paste. One-click flush. Every actionable email lands in the right Obsidian file, ready to work.
 
@@ -36,8 +36,8 @@ Each email becomes an Obsidian checkbox under a dated header:
 
 ```markdown
 ## Flushed 2025-01-15
-- [ ] [Meeting notes from Tuesday](https://mail.google.com/mail/u/0/#all/abc123) (from: Alice, 2025-01-15)
-- [ ] [Project proposal review](https://mail.google.com/mail/u/0/#all/def456) (from: Bob, 2025-01-14)
+- [ ] [Meeting notes from Tuesday](https://mail.google.com/mail/u/0/#all/abc123)
+- [ ] [Project proposal review](https://mail.google.com/mail/u/0/#all/def456)
 ```
 
 ## 🚀 Setup
@@ -135,7 +135,7 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 1. `doGet()` handles the web app request
 2. `flushToObsidian()` loads config from Script Properties and iterates each route
 3. For each route, reads all threads with the matching Gmail label
-4. Formats each thread as a Markdown checkbox with subject, permalink, sender, and date
+4. Formats each thread as a Markdown checkbox with subject and permalink
 5. Prepends the formatted block to the target file in your vault
 6. Removes the label and unstars messages to prevent reprocessing
 7. Returns an HTML summary of what was flushed
@@ -145,7 +145,7 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 The script includes several defense-in-depth measures:
 
 - **Explicit OAuth scopes** — `appsscript.json` locks permissions to the minimum needed (`gmail.modify`, `drive`, `script.scriptapp`), preventing silent scope escalation
-- **Markdown injection protection** — Email subjects and sender names are escaped to prevent crafted emails from injecting arbitrary URLs into task links
+- **Markdown injection protection** — Email subjects are escaped to prevent crafted emails from injecting arbitrary URLs into task links
 - **Clickjacking prevention** — HTML output sets `X-Frame-Options: DENY` to block iframe embedding
 - **Thread batch cap** — `MAX_THREADS` limits threads processed per run, preventing execution timeout from leaving partial state
 - **Startup config validation** — Misconfigured routes or missing vault paths fail fast with clear error messages

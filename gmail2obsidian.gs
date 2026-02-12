@@ -145,18 +145,10 @@ function flushToObsidian() {
 
       for (let i = 0; i < threads.length; i++) {
         const thread = threads[i];
-        const firstMessage = thread.getMessages()[0];
-
         const subject = thread.getFirstMessageSubject() || "(no subject)";
-        const sender = extractSenderName(firstMessage.getFrom());
-        const date = Utilities.formatDate(
-          firstMessage.getDate(),
-          Session.getScriptTimeZone(),
-          "yyyy-MM-dd"
-        );
         const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + thread.getId();
 
-        entries.push("- [ ] [" + escapeMd(subject) + "](" + permalink + ") (from: " + escapeMd(sender) + ", " + date + ")");
+        entries.push("- [ ] [" + escapeMd(subject) + "](" + permalink + ")");
         subjects.push(subject);
 
         thread.removeLabel(label);
@@ -238,18 +230,6 @@ function getFileByPath(relativePath, config) {
     throw new Error(fileName + " not found in " + relativePath);
   }
   return files.next();
-}
-
-/**
- * Extracts a display name from a "Name <email>" string.
- */
-function extractSenderName(fromField) {
-  const match = fromField.match(/^"?([^"<]+)"?\s*</);
-  if (match) {
-    return match[1].trim();
-  }
-  // Fallback: return the whole field (usually just an email address)
-  return fromField.replace(/<[^>]+>/, "").trim() || fromField;
 }
 
 /**

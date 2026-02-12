@@ -14,7 +14,7 @@ Single-file Google Apps Script (`gmail2obsidian.gs`, ~210 lines):
 - **doGet()** — Web app entry point; calls `flushToObsidian()` and returns an HTML summary page
 - **flushToObsidian()** — Core logic: iterates routes, reads labeled threads, formats entries, prepends to target files, removes labels/unstars
 - **getVaultFolder() / getFileByPath()** — Google Drive navigation helpers (support both path-based and folder-ID-based access)
-- **extractSenderName() / escapeHtml()** — Utility functions
+- **escapeMd() / escapeHtml()** — Utility functions
 
 Google APIs used: `GmailApp`, `DriveApp`, `HtmlService`, `Utilities`, `Session`.
 
@@ -29,7 +29,7 @@ There is no local build, test, or lint toolchain. The script runs entirely in Go
 
 ## Key Conventions
 
-- Task format: `- [ ] [subject](gmail-permalink) (from: sender, date)` under `## Flushed YYYY-MM-DD` headers
+- Task format: `- [ ] [subject](gmail-permalink)` under `## Flushed YYYY-MM-DD` headers
 - Entries are **prepended** to target files (newest on top)
 - Label removal after processing makes the operation idempotent
 - Routes with missing labels or files fail gracefully per-route (errors reported in HTML output, other routes continue)
