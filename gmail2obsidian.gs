@@ -6,52 +6,9 @@
  * in your vault on Google Drive. Removes the label (and unstars) after
  * processing. Supports cross-account setups via shared Drive folders.
  *
- * Setup:
- *   1. Go to https://script.google.com → New Project
- *   2. Paste this script
- *   3. Enable the manifest: Project Settings → Show "appsscript.json" manifest file
- *   4. Replace appsscript.json contents with the provided manifest
- *   5. Edit DEFAULT_CONFIG to match your setup (VAULT_FOLDER, ROUTES)
- *   6. Deploy → Web App → Execute as "Me" → Access "Only myself"
- *   7. Click the web app URL once — this seeds your config into Script Properties
- *   8. To change config later: Project Settings → Script Properties → edit CONFIG JSON
- *   9. Copy the web app URL → Bookmark it in your browser
- *  10. During triage: select emails → apply labels → click bookmark
+ * Setup: see README.md or run `make setup` for instructions.
+ * Configuration lives in config.gs (not committed — copy from config.example.gs).
  */
-
-const DEFAULT_CONFIG = {
-  VAULT_FOLDER: "Obsidian/YourVault", // Google Drive path to vault root
-  // VAULT_FOLDER_ID: "abc123...",     // Optional: Google Drive folder ID (for shared/cross-account folders)
-  // GMAIL_ACCOUNT_INDEX: 0,           // Optional: Gmail account index for permalinks (default: 0)
-  MAX_THREADS: 50,                     // Max threads per label per run (prevents execution timeout)
-  ROUTES: [
-    { label: "obsidian", file: "inbox.md" },
-    { label: "obsidian/project1", file: "project1/inbox.md" },
-    { label: "obsidian/project2", file: "project2/inbox.md" },
-  ],
-};
-
-/**
- * Reads config from Script Properties. On first run, seeds from DEFAULT_CONFIG.
- */
-function getConfig() {
-  const props = PropertiesService.getScriptProperties();
-  const stored = props.getProperty("CONFIG");
-  if (stored) {
-    return JSON.parse(stored);
-  }
-  // First run: seed Script Properties from defaults
-  props.setProperty("CONFIG", JSON.stringify(DEFAULT_CONFIG));
-  return DEFAULT_CONFIG;
-}
-
-/**
- * Resets Script Properties config back to DEFAULT_CONFIG.
- * Run from the Apps Script editor to restore defaults.
- */
-function resetConfig() {
-  PropertiesService.getScriptProperties().setProperty("CONFIG", JSON.stringify(DEFAULT_CONFIG));
-}
 
 /**
  * Web app entry point. Calls flushToObsidian and returns an HTML summary.
@@ -119,7 +76,7 @@ function validateConfig(config) {
  * files, clean up labels/stars. Returns array of per-route results.
  */
 function flushToObsidian() {
-  const config = getConfig();
+  const config = CONFIG;
   validateConfig(config);
   const results = [];
   const gmailAccountIndex = config.GMAIL_ACCOUNT_INDEX || 0;

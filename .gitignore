@@ -2,3 +2,4 @@ logs/
 .claude/*
 .clasprc.json
 .clasp.json
+config.gs
