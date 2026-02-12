@@ -20,9 +20,9 @@ const CONFIG = {
   // VAULT_FOLDER_ID: "abc123...",     // Optional: Google Drive folder ID (for shared/cross-account folders)
   // GMAIL_ACCOUNT_INDEX: 0,           // Optional: Gmail account index for permalinks (default: 0)
   ROUTES: [
-    { label: "to-obsidian",         file: "Inbox.md" },
-    { label: "to-obsidian/reading", file: "Areas/Reading/Inbox.md" },
-    { label: "to-obsidian/work",    file: "Areas/Work/Inbox.md" },
+    { label: "obsidian", file: "inbox.md" },
+    { label: "obsidian/project1", file: "project1/inbox.md" },
+    { label: "obsidian/project2", file: "project2/inbox.md" },
   ],
 };
 

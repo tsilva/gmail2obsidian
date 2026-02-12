@@ -55,9 +55,9 @@ Edit the `CONFIG` object to match your setup:
 const CONFIG = {
   VAULT_FOLDER: "Obsidian/YourVault",  // Google Drive path to vault root
   ROUTES: [
-    { label: "to-obsidian",         file: "Inbox.md" },
-    { label: "to-obsidian/reading", file: "Areas/Reading/Inbox.md" },
-    { label: "to-obsidian/work",    file: "Areas/Work/Inbox.md" },
+    { label: "obsidian",         file: "inbox.md" },
+    { label: "obsidian/project1", file: "project1/inbox.md" },
+    { label: "obsidian/project2", file: "project2/inbox.md" },
   ],
 };
 ```
