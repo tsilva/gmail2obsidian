@@ -101,7 +101,7 @@ function flushToObsidian() {
       const entries = [];
       const subjects = [];
       const prefixMap = { "checkbox": "- [ ] ", "bullet": "- ", "none": "" };
-      const prefix = prefixMap[config.ENTRY_PREFIX] || "- [ ] ";
+      const prefix = config.ENTRY_PREFIX in prefixMap ? prefixMap[config.ENTRY_PREFIX] : "- [ ] ";
       const entryLink = config.ENTRY_LINK !== false;
 
       for (let i = 0; i < threads.length; i++) {
