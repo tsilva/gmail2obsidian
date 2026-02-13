@@ -1,8 +1,9 @@
 /**
  * Gmail-to-Obsidian Bulk Flush Script
  *
- * Reads Gmail threads from configured labels, formats them as Obsidian
- * checkbox tasks with Gmail permalinks, and prepends them to target files
+ * Reads Gmail threads from configured labels, formats them as configurable
+ * Obsidian entries (checkbox/bullet/plain, with or without Gmail permalinks),
+ * and prepends them to target files
  * in your vault on Google Drive. Removes the label (and unstars) after
  * processing. Supports cross-account setups via shared Drive folders.
  *
@@ -99,13 +100,17 @@ function flushToObsidian() {
 
       const entries = [];
       const subjects = [];
+      const prefixMap = { "checkbox": "- [ ] ", "bullet": "- ", "none": "" };
+      const prefix = prefixMap[config.ENTRY_PREFIX] || "- [ ] ";
+      const entryLink = config.ENTRY_LINK !== false;
 
       for (let i = 0; i < threads.length; i++) {
         const thread = threads[i];
         const subject = thread.getFirstMessageSubject() || "(no subject)";
         const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + thread.getId();
 
-        entries.push("- [ ] [" + escapeMd(subject) + "](" + permalink + ")");
+        const text = entryLink ? "[" + escapeMd(subject) + "](" + permalink + ")" : subject;
+        entries.push(prefix + text);
         subjects.push(subject);
 
         thread.removeLabel(label);

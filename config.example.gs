@@ -11,6 +11,8 @@ const CONFIG = {
   // VAULT_FOLDER_ID: "abc123...",     // Optional: Google Drive folder ID (for shared/cross-account folders)
   // GMAIL_ACCOUNT_INDEX: 0,           // Optional: Gmail account index for permalinks (default: 0)
   MAX_THREADS: 50,                     // Max threads per label per run (prevents execution timeout)
+  ENTRY_PREFIX: "checkbox",              // "checkbox" (- [ ] ), "bullet" (- ), or "none"
+  ENTRY_LINK: true,                      // true: [subject](permalink), false: plain subject
   ROUTES: [
     { label: "obsidian", file: "inbox.md" },
     { label: "obsidian/project1", file: "project1/inbox.md" },

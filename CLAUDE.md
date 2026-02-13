@@ -10,7 +10,7 @@ Gmail-to-Obsidian is a Google Apps Script that bulk-flushes Gmail emails into Ob
 
 Google Apps Script split across two files (`gmail2obsidian.gs` + `config.gs`):
 
-- **CONFIG** (`config.gs`) — Routes mapping Gmail labels to vault file paths, plus optional cross-account settings (`VAULT_FOLDER_ID`, `GMAIL_ACCOUNT_INDEX`). Copied from `config.example.gs` during setup; gitignored but pushed by clasp.
+- **CONFIG** (`config.gs`) — Routes mapping Gmail labels to vault file paths, entry formatting options (`ENTRY_PREFIX`, `ENTRY_LINK`), plus optional cross-account settings (`VAULT_FOLDER_ID`, `GMAIL_ACCOUNT_INDEX`). Copied from `config.example.gs` during setup; gitignored but pushed by clasp.
 - **doGet()** — Web app entry point; calls `flushToObsidian()` and returns an HTML summary page
 - **flushToObsidian()** — Core logic: iterates routes, reads labeled threads, formats entries, prepends to target files, removes labels/unstars
 - **getVaultFolder() / getFileByPath()** — Google Drive navigation helpers (support both path-based and folder-ID-based access)
@@ -31,7 +31,7 @@ Other commands: `make open` (open in browser), `make login` (re-authenticate).
 
 ## Key Conventions
 
-- Task format: `- [ ] [subject](gmail-permalink)` under `## Flushed YYYY-MM-DD` headers
+- Task format: configurable via `ENTRY_PREFIX` (`checkbox`/`bullet`/`none`) and `ENTRY_LINK` (`true`/`false`); defaults to `- [ ] [subject](gmail-permalink)` under `## Flushed YYYY-MM-DD` headers
 - Entries are **prepended** to target files (newest on top)
 - Label removal after processing makes the operation idempotent
 - Routes with missing labels or files fail gracefully per-route (errors reported in HTML output, other routes continue)

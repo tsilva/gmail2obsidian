@@ -33,13 +33,24 @@
 
 ## 📋 Task Format
 
-Each email becomes an Obsidian checkbox under a dated header:
+Each email becomes an entry under a dated header. The format is configurable via `ENTRY_PREFIX` and `ENTRY_LINK`:
 
 ```markdown
 ## Flushed 2025-01-15
 - [ ] [Meeting notes from Tuesday](https://mail.google.com/mail/u/0/#all/abc123)
 - [ ] [Project proposal review](https://mail.google.com/mail/u/0/#all/def456)
 ```
+
+Default is checkbox + link (shown above). Other combinations:
+
+| `ENTRY_PREFIX` | `ENTRY_LINK` | Output |
+|---|---|---|
+| `"checkbox"` | `true` | `- [ ] [subject](permalink)` |
+| `"bullet"` | `true` | `- [subject](permalink)` |
+| `"none"` | `true` | `[subject](permalink)` |
+| `"checkbox"` | `false` | `- [ ] subject` |
+| `"bullet"` | `false` | `- subject` |
+| `"none"` | `false` | `subject` |
 
 ## 🚀 Setup
 
@@ -103,6 +114,8 @@ Config lives in `config.gs` (copied from `config.example.gs` during `make setup`
 | `VAULT_FOLDER_ID` | Drive folder ID (for shared/cross-account folders) | — |
 | `GMAIL_ACCOUNT_INDEX` | Account index for permalink URLs (`/u/0`, `/u/1`, etc.) | `0` |
 | `MAX_THREADS` | Max threads processed per label per run (prevents timeout) | `50` |
+| `ENTRY_PREFIX` | Entry prefix style: `"checkbox"` (`- [ ] `), `"bullet"` (`- `), or `"none"` | `"checkbox"` |
+| `ENTRY_LINK` | Wrap subject in a Markdown hyperlink to the Gmail thread | `true` |
 | `ROUTES` | Array of `{ label, file }` mappings | Required |
 
 ### Cross-Account Setup
@@ -141,7 +154,7 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 1. `doGet()` handles the web app request
 2. `flushToObsidian()` loads config from `config.gs` and iterates each route
 3. For each route, reads all threads with the matching Gmail label
-4. Formats each thread as a Markdown checkbox with subject and permalink
+4. Formats each thread as a configurable entry (checkbox/bullet/plain, with or without permalink)
 5. Prepends the formatted block to the target file in your vault
 6. Removes the label, archives the thread, and unstars messages to prevent reprocessing
 7. Returns an HTML summary of what was flushed
