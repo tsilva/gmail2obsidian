@@ -33,7 +33,7 @@
 
 ## 📋 Task Format
 
-Each email becomes an entry under a dated header. The format is configurable via `ENTRY_PREFIX` and `ENTRY_LINK`:
+Each email becomes an entry under a dated header. The format is configurable via `ENTRY_HEADER`, `ENTRY_PREFIX`, and `ENTRY_LINK`:
 
 ```markdown
 ## Flushed 2025-01-15
@@ -114,6 +114,7 @@ Config lives in `config.gs` (copied from `config.example.gs` during `make setup`
 | `VAULT_FOLDER_ID` | Drive folder ID (for shared/cross-account folders) | — |
 | `GMAIL_ACCOUNT_INDEX` | Account index for permalink URLs (`/u/0`, `/u/1`, etc.) | `0` |
 | `MAX_THREADS` | Max threads processed per label per run (prevents timeout) | `50` |
+| `ENTRY_HEADER` | Prepend a `## Flushed YYYY-MM-DD` header above entries | `true` |
 | `ENTRY_PREFIX` | Entry prefix style: `"checkbox"` (`- [ ] `), `"bullet"` (`- `), or `"none"` | `"checkbox"` |
 | `ENTRY_LINK` | Wrap subject in a Markdown hyperlink to the Gmail thread | `true` |
 | `ROUTES` | Array of `{ label, file }` mappings | Required |

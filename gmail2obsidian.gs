@@ -126,13 +126,18 @@ function flushToObsidian() {
         }
       }
 
-      const today = Utilities.formatDate(
-        new Date(),
-        Session.getScriptTimeZone(),
-        "yyyy-MM-dd"
-      );
-      const header = "## Flushed " + today;
-      const block = header + "\n" + entries.join("\n") + "\n\n";
+      const entryHeader = config.ENTRY_HEADER !== false;
+      let block;
+      if (entryHeader) {
+        const today = Utilities.formatDate(
+          new Date(),
+          Session.getScriptTimeZone(),
+          "yyyy-MM-dd"
+        );
+        block = "## Flushed " + today + "\n" + entries.join("\n") + "\n\n";
+      } else {
+        block = entries.join("\n") + "\n\n";
+      }
 
       const file = getFileByPath(route.file, config);
       const existing = file.getBlob().getDataAsString();
