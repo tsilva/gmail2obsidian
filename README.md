@@ -200,3 +200,7 @@ The script includes several defense-in-depth measures:
 ## 📄 License
 
 This project is open source. See the [LICENSE](LICENSE) file for details.
+
+## License
+
+MIT
