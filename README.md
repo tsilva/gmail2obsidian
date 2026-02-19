@@ -148,8 +148,8 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 │              │         │                  │           │                      │
 └─────────────┘         └──────────────────┘           └──────────────────────┘
        │                         │
-       └── remove labels, ◄─────┘
-           archive & unstar
+        └── remove labels ◄─────┘
+            & archive
 ```
 
 1. `doGet()` handles the web app request
@@ -157,7 +157,7 @@ Gmail                    Google Apps Script              Google Drive (Obsidian 
 3. For each route, reads all threads with the matching Gmail label
 4. Formats each thread as a configurable entry (checkbox/bullet/plain, with or without permalink)
 5. Prepends the formatted block to the target file in your vault
-6. Removes the label, archives the thread, and unstars messages to prevent reprocessing
+6. Removes the label and archives the thread to prevent reprocessing
 7. Returns an HTML summary of what was flushed
 
 ## 🛠️ Development

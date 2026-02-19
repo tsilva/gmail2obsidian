@@ -12,7 +12,7 @@ Google Apps Script split across two files (`gmail2obsidian.gs` + `config.gs`):
 
 - **CONFIG** (`config.gs`) — Routes mapping Gmail labels to vault file paths, entry formatting options (`ENTRY_HEADER`, `ENTRY_PREFIX`, `ENTRY_LINK`), plus optional cross-account settings (`VAULT_FOLDER_ID`, `GMAIL_ACCOUNT_INDEX`). Copied from `config.example.gs` during setup; gitignored but pushed by clasp.
 - **doGet()** — Web app entry point; calls `flushToObsidian()` and returns an HTML summary page
-- **flushToObsidian()** — Core logic: iterates routes, reads labeled threads, formats entries, prepends to target files, removes labels/unstars
+- **flushToObsidian()** — Core logic: iterates routes, reads labeled threads, formats entries, prepends to target files, removes labels
 - **getVaultFolder() / getFileByPath()** — Google Drive navigation helpers (support both path-based and folder-ID-based access)
 - **escapeMd() / escapeHtml()** — Utility functions
 

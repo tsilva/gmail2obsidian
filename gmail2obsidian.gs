@@ -4,8 +4,8 @@
  * Reads Gmail threads from configured labels, formats them as configurable
  * Obsidian entries (checkbox/bullet/plain, with or without Gmail permalinks),
  * and prepends them to target files
- * in your vault on Google Drive. Removes the label (and unstars) after
- * processing. Supports cross-account setups via shared Drive folders.
+ * in your vault on Google Drive. Removes the label after processing.
+ * Supports cross-account setups via shared Drive folders.
  *
  * Setup: see README.md or run `make setup` for instructions.
  * Configuration lives in config.gs (not committed — copy from config.example.gs).
@@ -74,7 +74,7 @@ function validateConfig(config) {
 
 /**
  * Core logic: iterate over routes, read labeled emails, append to target
- * files, clean up labels/stars. Returns array of per-route results.
+ * files, clean up labels. Returns array of per-route results.
  */
 function flushToObsidian() {
   const config = CONFIG;
@@ -115,15 +115,6 @@ function flushToObsidian() {
 
         thread.removeLabel(label);
         thread.moveToArchive();
-
-        if (thread.hasStarredMessages()) {
-          const messages = thread.getMessages();
-          for (let j = 0; j < messages.length; j++) {
-            if (messages[j].isStarred()) {
-              messages[j].unstar();
-            }
-          }
-        }
       }
 
       const entryHeader = config.ENTRY_HEADER !== false;
