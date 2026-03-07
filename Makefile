@@ -1,9 +1,6 @@
 require-config:
 	@test -f config.gs || (echo "Error: config.gs not found. Run 'make setup' first, then edit config.gs" && exit 1)
 
-push: require-config
-	clasp push
-
 deploy: require-config
 	clasp push
 	@clasp deployments | grep -v '@HEAD' | grep -o 'AKfycb[^ ]*' | while read id; do clasp undeploy "$$id"; done

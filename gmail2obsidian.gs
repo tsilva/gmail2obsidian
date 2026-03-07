@@ -129,7 +129,7 @@ function flushToObsidian() {
 
       const file = getFileByPath(route.file, config);
       const existing = file.getBlob().getDataAsString();
-      file.setContent(block + existing);
+      file.setContent(existing + block);
 
       // Only remove labels after successful flush
       for (let i = 0; i < threads.length; i++) {
