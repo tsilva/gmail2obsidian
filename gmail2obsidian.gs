@@ -112,9 +112,6 @@ function flushToObsidian() {
         const text = entryLink ? "[" + escapeMd(subject) + "](" + permalink + ")" : subject;
         entries.push(prefix + text);
         subjects.push(subject);
-
-        thread.removeLabel(label);
-        thread.moveToArchive();
       }
 
       const entryHeader = config.ENTRY_HEADER !== false;
@@ -133,6 +130,12 @@ function flushToObsidian() {
       const file = getFileByPath(route.file, config);
       const existing = file.getBlob().getDataAsString();
       file.setContent(block + existing);
+
+      // Only remove labels after successful flush
+      for (let i = 0; i < threads.length; i++) {
+        threads[i].removeLabel(label);
+        threads[i].moveToArchive();
+      }
 
       const result = { label: route.label, file: route.file, count: threads.length, subjects: subjects };
       if (threads.length >= maxThreads) {
