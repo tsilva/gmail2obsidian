@@ -73,7 +73,7 @@ function validateConfig(config) {
 }
 
 /**
- * Core logic: iterate over routes, read labeled emails, append to target
+ * Core logic: iterate over routes, read labeled emails, prepend to target
  * files, clean up labels. Returns array of per-route results.
  */
 function flushToObsidian() {
@@ -129,7 +129,7 @@ function flushToObsidian() {
 
       const file = getFileByPath(route.file, config);
       const existing = file.getBlob().getDataAsString();
-      file.setContent(existing + block);
+      file.setContent(block + existing);
 
       // Only remove labels after successful flush
       for (let i = 0; i < threads.length; i++) {
