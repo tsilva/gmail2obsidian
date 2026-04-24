@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png" alt="gmail2obsidian" width="512"/>
+  <img src="https://raw.githubusercontent.com/tsilva/gmail2obsidian/main/logo.png" alt="gmail2obsidian" width="512"/>
 
   [![Google Apps Script](https://img.shields.io/badge/Google%20Apps%20Script-4285F4?style=flat&logo=google&logoColor=white)](https://script.google.com)
   [![License](https://img.shields.io/github/license/tsilva/gmail2obsidian?style=flat)](LICENSE)
