@@ -1,206 +1,91 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/tsilva/gmail2obsidian/main/logo.png" alt="gmail2obsidian" width="512"/>
-
-  [![Google Apps Script](https://img.shields.io/badge/Google%20Apps%20Script-4285F4?style=flat&logo=google&logoColor=white)](https://script.google.com)
-  [![License](https://img.shields.io/github/license/tsilva/gmail2obsidian?style=flat)](LICENSE)
-  [![Lines of Code](https://img.shields.io/badge/lines-~210-blue?style=flat)]()
+  <img src="./logo.png" alt="gmail2obsidian" width="512" />
 
   **📬 Flush labeled Gmail threads into [Obsidian](https://obsidian.md/) task files with one click ✅**
-
-  [Setup Guide](#-setup) · [Configuration](#%EF%B8%8F-configuration) · [How It Works](#-how-it-works)
 </div>
 
----
+gmail2obsidian is a Google Apps Script that turns Gmail labels into Obsidian tasks stored in markdown files on Google Drive. Label emails while triaging your inbox, click the deployed web app URL, and each matching thread is prepended to the configured vault file with a Gmail permalink.
 
-## 💡 Overview
+The script is deployed with `clasp`, runs as your Google Apps Script user, and removes each processed label after a successful write so the same thread is not flushed twice.
 
-**The Pain:** You triage emails all day, but action items get buried in your inbox. Copy-pasting into your task manager is tedious and breaks your flow.
+## Setup
 
-**The Solution:** gmail2obsidian is a Google Apps Script that turns Gmail labels into [Obsidian](https://obsidian.md/) checkboxes. Label emails during triage, click a bookmarked URL, and they appear as tasks in your vault — complete with Gmail permalinks.
+Create a Google Apps Script project at [script.google.com](https://script.google.com), copy its Script ID from Project Settings, then run:
 
-**The Result:** Zero copy-paste. One-click flush. Every actionable email lands in the right Obsidian file, ready to work.
+```bash
+git clone git@github.com:tsilva/gmail2obsidian.git
+cd gmail2obsidian
+npm install -g @google/clasp
+make setup
+make login
+```
 
-## ✨ Features
+Enable the Apps Script API at [script.google.com/home/usersettings](https://script.google.com/home/usersettings), then edit `.clasp.json` and replace `YOUR_SCRIPT_ID_HERE` with your Script ID.
 
-- **Multi-label routing** — Map different Gmail labels to different vault files (e.g., `to-obsidian/reading` → `Areas/Reading/Inbox.md`)
-- **Gmail permalinks** — Each task links back to the original email thread
-- **Prepend mode** — Newest tasks always appear at the top of the file
-- **Auto-archive** — Processed threads are archived in Gmail automatically
-- **Idempotent** — Labels are removed after processing, so re-running is safe
-- **Cross-account support** — Works with shared Drive folders across Google accounts
-- **Graceful error handling** — One broken route won't stop the others
-- **HTML summary** — See exactly what got flushed after each run
+Edit `config.gs` with your vault path and routes, then deploy:
 
-## 📋 Task Format
+```bash
+make deploy
+```
 
-Each email becomes an entry under a dated header. The format is configurable via `ENTRY_HEADER`, `ENTRY_PREFIX`, and `ENTRY_LINK`:
+Bookmark the printed web app URL. To use it, apply one of your configured Gmail labels to threads and open the bookmark.
+
+## Configuration
+
+`make setup` copies `config.example.gs` to `config.gs`. `config.gs` is ignored by git but included in `clasp` uploads.
+
+```javascript
+const CONFIG = {
+  VAULT_FOLDER: "Obsidian/YourVault",
+  MAX_THREADS: 50,
+  ENTRY_PREFIX: "checkbox",
+  ENTRY_LINK: true,
+  ENTRY_HEADER: true,
+  ROUTES: [
+    { label: "obsidian", file: "inbox.md" },
+    { label: "obsidian/project1", file: "project1/inbox.md" },
+  ],
+};
+```
+
+Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER` when the vault is in a shared or cross-account Drive folder. Set `GMAIL_ACCOUNT_INDEX` when Gmail permalinks should open a non-default Google account, such as `/u/1`.
+
+## Output
+
+By default, each email becomes a checkbox under a dated flush header:
 
 ```markdown
-## Flushed 2025-01-15
+## Flushed 2026-04-29
 - [ ] [Meeting notes from Tuesday](https://mail.google.com/mail/u/0/#all/abc123)
 - [ ] [Project proposal review](https://mail.google.com/mail/u/0/#all/def456)
 ```
 
-Default is checkbox + link (shown above). Other combinations:
+`ENTRY_PREFIX` can be `"checkbox"`, `"bullet"`, or `"none"`. `ENTRY_LINK` controls whether subjects become Gmail links, and `ENTRY_HEADER` controls the dated header.
 
-| `ENTRY_PREFIX` | `ENTRY_LINK` | Output |
-|---|---|---|
-| `"checkbox"` | `true` | `- [ ] [subject](permalink)` |
-| `"bullet"` | `true` | `- [subject](permalink)` |
-| `"none"` | `true` | `[subject](permalink)` |
-| `"checkbox"` | `false` | `- [ ] subject` |
-| `"bullet"` | `false` | `- subject` |
-| `"none"` | `false` | `subject` |
+## Commands
 
-## 🚀 Setup
-
-### 1. Create the Script
-
-1. Go to [script.google.com](https://script.google.com) → **New Project**
-2. Copy the **Script ID** from **Project Settings** (⚙️) — you'll need it in step 3
-
-### 2. Set Up clasp (CLI Deployment)
-
-1. Install [clasp](https://github.com/google/clasp): `npm install -g @google/clasp`
-2. Run `make setup` — this installs the pre-commit hook, creates a `.clasp.json` template, and copies `config.example.gs` to `config.gs`
-3. Edit `.clasp.json` and replace `YOUR_SCRIPT_ID_HERE` with your Script ID
-4. Run `make login` to authenticate with Google
-5. Enable the [Apps Script API](https://script.google.com/home/usersettings)
-6. Run `make push` to upload the script and manifest
-
-### 3. Configure Routes
-
-Edit `config.gs` to match your setup:
-
-```javascript
-const CONFIG = {
-  VAULT_FOLDER: "Obsidian/YourVault",  // Google Drive path to vault root
-  ROUTES: [
-    { label: "obsidian",         file: "inbox.md" },
-    { label: "obsidian/project1", file: "project1/inbox.md" },
-    { label: "obsidian/project2", file: "project2/inbox.md" },
-  ],
-};
+```bash
+make setup   # install git hooks, create .clasp.json, and copy config.gs
+make login   # authenticate clasp with Google
+make push    # upload gmail2obsidian.gs, config.gs, and appsscript.json
+make deploy  # push and update the stable web app deployment URL
+make open    # open the Apps Script project
 ```
 
-`config.gs` is gitignored but pushed to Apps Script by clasp. To update config after initial deployment, edit `config.gs` and run `make push`.
+## Notes
 
-### 4. Create Gmail Labels
+- Target `.md` files must already exist in the Drive vault.
+- Gmail labels must match `CONFIG.ROUTES` exactly; nested labels use `/`.
+- `MAX_THREADS` caps each label batch to avoid Apps Script timeouts. Run the web app again if the summary reports that the cap was reached.
+- Routes fail independently. Missing labels are skipped; target file errors are reported in the HTML summary without stopping other routes.
+- `make deploy` reuses the existing active deployment so bookmarked `/exec` URLs do not go stale.
+- `appsscript.json` declares Gmail modify, Drive, and Apps Script deployment scopes.
+- `.claspignore` uploads only `gmail2obsidian.gs`, `config.gs`, and `appsscript.json`.
 
-In Gmail, create labels matching your routes (e.g., `to-obsidian`, `to-obsidian/reading`). Nested labels work using `/` separators.
+## Architecture
 
-### 5. Deploy as Web App
-
-1. Click **Deploy** → **New deployment**
-2. Type: **Web app**
-3. Execute as: **Me**
-4. Access: **Only myself**
-5. Click **Deploy** and authorize the requested permissions
-6. Copy the web app URL
-
-### 6. Bookmark & Use
-
-Save the web app URL as a browser bookmark. Your workflow becomes:
-
-> **Select emails → Apply label → Click bookmark → Done**
-
-## ⚙️ Configuration
-
-Config lives in `config.gs` (copied from `config.example.gs` during `make setup`). This file is gitignored but pushed to Apps Script by clasp. To change config, edit `config.gs` and run `make push`.
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `VAULT_FOLDER` | Google Drive path to your Obsidian vault root | Required |
-| `VAULT_FOLDER_ID` | Drive folder ID (for shared/cross-account folders) | — |
-| `GMAIL_ACCOUNT_INDEX` | Account index for permalink URLs (`/u/0`, `/u/1`, etc.) | `0` |
-| `MAX_THREADS` | Max threads processed per label per run (prevents timeout) | `50` |
-| `ENTRY_HEADER` | Prepend a `## Flushed YYYY-MM-DD` header above entries | `true` |
-| `ENTRY_PREFIX` | Entry prefix style: `"checkbox"` (`- [ ] `), `"bullet"` (`- `), or `"none"` | `"checkbox"` |
-| `ENTRY_LINK` | Wrap subject in a Markdown hyperlink to the Gmail thread | `true` |
-| `ROUTES` | Array of `{ label, file }` mappings | Required |
-
-### Cross-Account Setup
-
-If your Obsidian vault lives in a different Google account's Drive:
-
-1. Share the vault folder with your Gmail account
-2. Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER`:
-
-```javascript
-const CONFIG = {
-  VAULT_FOLDER_ID: "1AbCdEf...",  // Folder ID from the shared folder's URL
-  GMAIL_ACCOUNT_INDEX: 1,          // Your Gmail account index
-  ROUTES: [
-    { label: "to-obsidian", file: "Inbox.md" },
-  ],
-};
-```
-
-Find the folder ID in the Drive URL: `https://drive.google.com/drive/folders/THIS_PART`.
-
-## 🔧 How It Works
-
-```
-Gmail                    Google Apps Script              Google Drive (Obsidian Vault)
-┌─────────────┐         ┌──────────────────┐           ┌──────────────────────┐
-│ Labeled      │  read   │                  │  prepend  │                      │
-│ threads      │───────→ │  flushToObsidian │─────────→ │  Target .md files    │
-│              │         │                  │           │                      │
-└─────────────┘         └──────────────────┘           └──────────────────────┘
-       │                         │
-        └── remove labels ◄─────┘
-            & archive
-```
-
-1. `doGet()` handles the web app request
-2. `flushToObsidian()` loads config from `config.gs` and iterates each route
-3. For each route, reads all threads with the matching Gmail label
-4. Formats each thread as a configurable entry (checkbox/bullet/plain, with or without permalink)
-5. Prepends the formatted block to the target file in your vault
-6. Removes the label and archives the thread to prevent reprocessing
-7. Returns an HTML summary of what was flushed
-
-## 🛠️ Development
-
-After initial setup, the development workflow is:
-
-1. Edit `gmail2obsidian.gs` locally
-2. `make push` to upload, or `make deploy` to upload and create a versioned deployment
-3. Test by clicking the web app URL
-
-| Command | What it does |
-|---------|-------------|
-| `make push` | Upload script to Apps Script |
-| `make deploy` | Push + create timestamped deployment |
-| `make open` | Open project in browser |
-| `make login` | Re-authenticate with Google |
-| `make setup` | Install git hooks + create `.clasp.json` template |
-
-## 🔒 Security
-
-The script includes several defense-in-depth measures:
-
-- **Explicit OAuth scopes** — `appsscript.json` locks permissions to the minimum needed (`gmail.modify`, `drive`, `script.scriptapp`), preventing silent scope escalation
-- **Markdown injection protection** — Email subjects are escaped to prevent crafted emails from injecting arbitrary URLs into task links
-- **Clickjacking prevention** — HTML output sets `X-Frame-Options: DEFAULT` to restrict iframe embedding
-- **Thread batch cap** — `MAX_THREADS` limits threads processed per run, preventing execution timeout from leaving partial state
-- **Startup config validation** — Misconfigured routes or missing vault paths fail fast with clear error messages
-
-## 🐛 Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| "Vault folder not found" | Verify `VAULT_FOLDER` path matches your Drive folder structure exactly |
-| "File not found" | Ensure target `.md` files exist in your vault before running |
-| Wrong Gmail account in permalinks | Adjust `GMAIL_ACCOUNT_INDEX` (0 = default account, 1 = second, etc.) |
-| No emails processed | Check that Gmail labels match the `ROUTES` label names in `config.gs` exactly |
-| Permission errors with shared folders | Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER` for cross-account access |
-| "Batch cap reached" warning | Run the web app again to process remaining threads, or increase `MAX_THREADS` in `config.gs` |
-
-## 📄 License
-
-This project is open source. See the [LICENSE](LICENSE) file for details.
+![gmail2obsidian architecture diagram](./architecture.png)
 
 ## License
 
-MIT
+[MIT](LICENSE)

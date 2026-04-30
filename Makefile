@@ -3,12 +3,20 @@ require-config:
 
 deploy: require-config
 	clasp push
-	@clasp deployments | grep -v '@HEAD' | grep -o 'AKfycb[^ ]*' | while read id; do clasp undeploy "$$id"; done
-	@RESULT=$$(clasp deploy -d "$$(date +%Y-%m-%d_%H:%M)"); \
+	@DESC=$$(date +%Y-%m-%d_%H:%M); \
+	VERSION_OUTPUT=$$(clasp version "$$DESC"); \
+	echo "$$VERSION_OUTPUT"; \
+	VERSION=$$(echo "$$VERSION_OUTPUT" | grep -Eo '[0-9]+' | tail -1); \
+	DEPLOYMENT_ID=$$(clasp deployments | awk '/@HEAD/{next} /^- / {print $$2; exit}'); \
+	if [ -n "$$DEPLOYMENT_ID" ]; then \
+		RESULT=$$(clasp redeploy "$$DEPLOYMENT_ID" -V "$$VERSION" -d "$$DESC"); \
+	else \
+		RESULT=$$(clasp deploy -V "$$VERSION" -d "$$DESC"); \
+		DEPLOYMENT_ID=$$(echo "$$RESULT" | grep -o 'AKfycb[^ ]*' | head -1); \
+	fi; \
 		echo "$$RESULT"; \
-		ID=$$(echo "$$RESULT" | grep -o 'AKfycb[^ .]*'); \
 		echo ""; \
-		echo "Web app URL: https://script.google.com/macros/s/$$ID/exec"
+		echo "Web app URL: https://script.google.com/macros/s/$$DEPLOYMENT_ID/exec"
 
 open:
 	clasp open
