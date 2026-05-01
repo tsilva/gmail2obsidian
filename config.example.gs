@@ -15,7 +15,7 @@ const CONFIG = {
   ENTRY_LINK: true,                      // true: [subject](permalink), false: plain subject
   ENTRY_HEADER: true,                    // true: prepend "## Flushed YYYY-MM-DD" header, false: no header
   ROUTES: [
-    { label: "obsidian", file: "inbox.md" },
+    { label: "obsidian", file: "@inbox.md" },
     { label: "obsidian/project1", file: "project1/inbox.md" },
     { label: "obsidian/project2", file: "project2/inbox.md" },
   ],

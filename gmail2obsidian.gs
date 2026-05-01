@@ -73,6 +73,78 @@ function validateConfig(config) {
 }
 
 /**
+ * Expands configured routes with discovered child Gmail labels.
+ * A base route like { label: "obsidian", file: "@inbox.md" } also handles
+ * labels such as "obsidian/parsefood" by resolving parsefood.md,
+ * git-parsefood.md, or falling back to the base inbox file.
+ */
+function expandRoutes(config) {
+  const configuredRoutes = config.ROUTES.slice();
+  const explicitLabels = {};
+  for (let i = 0; i < configuredRoutes.length; i++) {
+    explicitLabels[configuredRoutes[i].label] = true;
+  }
+
+  const expanded = configuredRoutes.slice();
+  const userLabels = GmailApp.getUserLabels();
+
+  for (let l = 0; l < userLabels.length; l++) {
+    const labelName = userLabels[l].getName();
+    if (explicitLabels[labelName]) continue;
+
+    const baseRoute = getDynamicBaseRoute(labelName, configuredRoutes);
+    if (!baseRoute) continue;
+
+    const suffix = labelName.slice(baseRoute.label.length + 1);
+    if (!suffix) continue;
+
+    expanded.push({
+      label: labelName,
+      file: baseRoute.file,
+      dynamicSuffix: suffix
+    });
+  }
+
+  return expanded;
+}
+
+/**
+ * Finds the longest configured route that can act as the parent for a child label.
+ */
+function getDynamicBaseRoute(labelName, routes) {
+  let match = null;
+  for (let i = 0; i < routes.length; i++) {
+    const route = routes[i];
+    const prefix = route.label + "/";
+    if (labelName.indexOf(prefix) !== 0) continue;
+    if (!match || route.label.length > match.label.length) {
+      match = route;
+    }
+  }
+  return match;
+}
+
+/**
+ * Resolves a dynamic label suffix to a target file next to the base inbox file.
+ */
+function resolveDynamicTarget(baseFile, suffix, config) {
+  const folderPath = getFolderPath(baseFile);
+  const slug = suffix.replace(/\//g, "-");
+  const candidates = [
+    appendPath(folderPath, slug + ".md"),
+    appendPath(folderPath, "git-" + slug + ".md")
+  ];
+
+  for (let i = 0; i < candidates.length; i++) {
+    if (fileExistsByPath(candidates[i], config)) {
+      return { file: candidates[i], fallback: false };
+    }
+  }
+
+  return { file: baseFile, fallback: true };
+}
+
+/**
  * Core logic: iterate over routes, read labeled emails, prepend to target
  * files, clean up labels. Returns array of per-route results.
  */
@@ -81,9 +153,10 @@ function flushToObsidian() {
   validateConfig(config);
   const results = [];
   const gmailAccountIndex = config.GMAIL_ACCOUNT_INDEX || 0;
+  const routes = expandRoutes(config);
 
-  for (let r = 0; r < config.ROUTES.length; r++) {
-    const route = config.ROUTES[r];
+  for (let r = 0; r < routes.length; r++) {
+    const route = routes[r];
     try {
       const label = GmailApp.getUserLabelByName(route.label);
       if (!label) {
@@ -98,6 +171,14 @@ function flushToObsidian() {
         continue;
       }
 
+      let targetFile = route.file;
+      let fallbackPrefix = route.fallbackPrefix || "";
+      if (route.dynamicSuffix) {
+        const target = resolveDynamicTarget(route.file, route.dynamicSuffix, config);
+        targetFile = target.file;
+        fallbackPrefix = target.fallback ? "#" + getLabelLeaf(route.dynamicSuffix) : "";
+      }
+
       const entries = [];
       const subjects = [];
       const prefixMap = { "checkbox": "- [ ] ", "bullet": "- ", "none": "" };
@@ -109,7 +190,10 @@ function flushToObsidian() {
         const subject = thread.getFirstMessageSubject() || "(no subject)";
         const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + thread.getId();
 
-        const text = entryLink ? "[" + escapeMd(subject) + "](" + permalink + ")" : subject;
+        let text = entryLink ? "[" + escapeMd(subject) + "](" + permalink + ")" : subject;
+        if (fallbackPrefix) {
+          text = fallbackPrefix + " " + text;
+        }
         entries.push(prefix + text);
         subjects.push(subject);
       }
@@ -127,7 +211,7 @@ function flushToObsidian() {
         block = entries.join("\n") + "\n\n";
       }
 
-      const file = getFileByPath(route.file, config);
+      const file = getFileByPath(targetFile, config);
       const existing = file.getBlob().getDataAsString();
       file.setContent(block + existing);
 
@@ -137,7 +221,7 @@ function flushToObsidian() {
         threads[i].moveToArchive();
       }
 
-      const result = { label: route.label, file: route.file, count: threads.length, subjects: subjects };
+      const result = { label: route.label, file: targetFile, count: threads.length, subjects: subjects };
       if (threads.length >= maxThreads) {
         result.warning = "Batch cap reached (" + maxThreads + "). More threads may remain — run again to continue.";
       }
@@ -170,12 +254,10 @@ function getVaultFolder(config) {
 }
 
 /**
- * Navigates the Google Drive folder path to find a file.
- * relativePath is relative to the vault root (e.g., "Areas/Reading/Inbox.md").
+ * Navigates to a folder path relative to the vault root.
  */
-function getFileByPath(relativePath, config) {
-  const parts = relativePath.split("/");
-  const fileName = parts.pop();
+function getFolderByPath(relativePath, config) {
+  const parts = relativePath ? relativePath.split("/") : [];
   let folder = getVaultFolder(config);
 
   for (let i = 0; i < parts.length; i++) {
@@ -186,11 +268,59 @@ function getFileByPath(relativePath, config) {
     folder = folders.next();
   }
 
+  return folder;
+}
+
+/**
+ * Navigates the Google Drive folder path to find a file.
+ * relativePath is relative to the vault root (e.g., "Areas/Reading/Inbox.md").
+ */
+function getFileByPath(relativePath, config) {
+  const parts = relativePath.split("/");
+  const fileName = parts.pop();
+  const folder = getFolderByPath(parts.join("/"), config);
+
   const files = folder.getFilesByName(fileName);
   if (!files.hasNext()) {
     throw new Error(fileName + " not found in " + relativePath);
   }
   return files.next();
+}
+
+/**
+ * Returns whether a file exists at a vault-relative path.
+ */
+function fileExistsByPath(relativePath, config) {
+  try {
+    getFileByPath(relativePath, config);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Returns the folder portion of a vault-relative file path.
+ */
+function getFolderPath(relativePath) {
+  const parts = relativePath.split("/");
+  parts.pop();
+  return parts.join("/");
+}
+
+/**
+ * Appends a file name to a vault-relative folder path.
+ */
+function appendPath(folderPath, fileName) {
+  return folderPath ? folderPath + "/" + fileName : fileName;
+}
+
+/**
+ * Returns the last segment of a nested Gmail label suffix.
+ */
+function getLabelLeaf(suffix) {
+  const parts = suffix.split("/");
+  return parts[parts.length - 1];
 }
 
 /**
