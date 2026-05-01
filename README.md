@@ -96,6 +96,10 @@ make open    # open the Apps Script project
 
 ![gmail2obsidian architecture diagram](./architecture.png)
 
+## Brand Assets
+
+Generated logo, icon, favicon, social, and store-size assets live in [`image-assets`](./image-assets). The README logo is synced to [`logo.png`](./logo.png).
+
 ## License
 
 [MIT](LICENSE)
