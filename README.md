@@ -4,11 +4,11 @@
   **📬 Flush labeled Gmail threads into [Obsidian](https://obsidian.md/) task files with one click ✅**
 </div>
 
-gmail2obsidian is a Google Apps Script that turns Gmail labels into Obsidian tasks stored in markdown files on Google Drive. Label emails while triaging your inbox, click the deployed web app URL, and each matching thread is prepended to the configured vault file with a Gmail permalink.
+gmail2obsidian is a Google Apps Script that turns Gmail labels into Obsidian tasks stored in markdown files on Google Drive. Label emails while triaging your inbox, click the deployed web app URL, and each matching thread is prepended to the configured vault file.
 
 The script is deployed with `clasp`, runs as your Google Apps Script user, adds a file-level `#process` tag when new entries are written, and removes each processed label after a successful write so the same thread is not flushed twice.
 
-Labels under a configured route are also routed automatically. For example, if `obsidian` sends to `@inbox.md`, then `obsidian/parsefood` sends to `parsefood.md` when that file exists, then `git-parsefood.md` when that exists, and otherwise falls back to `@inbox.md` with `#parsefood` prefixed to the entry.
+Labels under a configured route are also routed automatically. For example, if `obsidian` sends to `@inbox.md`, then `obsidian/parsefood` sends to `parsefood.md` when that file exists, then `git-parsefood.md` when that exists, and otherwise falls back to `@inbox.md` with `#parsefood` prefixed to the entry. If a thread has both a parent label and a child label, the child label wins and the parent route does not also receive the thread.
 
 ## Setup
 
@@ -41,7 +41,7 @@ const CONFIG = {
   VAULT_FOLDER: "Obsidian/YourVault",
   MAX_THREADS: 50,
   ENTRY_PREFIX: "checkbox",
-  ENTRY_LINK: true,
+  ENTRY_LINK: false,
   ENTRY_HEADER: true,
   ROUTES: [
     { label: "obsidian", file: "@inbox.md" },
@@ -50,7 +50,7 @@ const CONFIG = {
 };
 ```
 
-Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER` when the vault is in a shared or cross-account Drive folder. Set `GMAIL_ACCOUNT_INDEX` when Gmail permalinks should open a non-default Google account, such as `/u/1`.
+Use `VAULT_FOLDER_ID` instead of `VAULT_FOLDER` when the vault is in a shared or cross-account Drive folder. If you set `ENTRY_LINK: true`, set `GMAIL_ACCOUNT_INDEX` when Gmail permalinks should open a non-default Google account, such as `/u/1`.
 
 ## Output
 
@@ -60,17 +60,17 @@ By default, each email becomes a checkbox under a dated flush header:
 #process
 
 ## Flushed 2026-04-29
-- [ ] [Meeting notes from Tuesday](https://mail.google.com/mail/u/0/#all/abc123)
-- [ ] [Project proposal review](https://mail.google.com/mail/u/0/#all/def456)
+- [ ] Meeting notes from Tuesday (body: Please review the agenda before Thursday.)
+- [ ] Project proposal review
 ```
 
-The file-level `#process` tag is added once when needed. `ENTRY_PREFIX` can be `"checkbox"`, `"bullet"`, or `"none"`. `ENTRY_LINK` controls whether subjects become Gmail links, and `ENTRY_HEADER` controls the dated header.
+The file-level `#process` tag is added once when needed. When the first message has body text, it is collapsed to one line and appended as `(body: ...)` after the subject. `ENTRY_PREFIX` can be `"checkbox"`, `"bullet"`, or `"none"`. `ENTRY_LINK: true` makes subjects Gmail links, and `ENTRY_HEADER` controls the dated header.
 
 Dynamic child labels use the same formatting. When a child label falls back to the configured inbox file, the label leaf is inserted as an Obsidian tag:
 
 ```markdown
 ## Flushed 2026-04-29
-- [ ] #parsefood [Recipe follow-up](https://mail.google.com/mail/u/0/#all/abc123)
+- [ ] #parsefood Recipe follow-up
 ```
 
 ## Commands
@@ -89,6 +89,7 @@ make open    # open the Apps Script project
 - Files that receive new entries are automatically tagged with `#process` if they do not already contain that tag.
 - Gmail labels must match `CONFIG.ROUTES` exactly; nested labels use `/`.
 - Child Gmail labels below a configured route are discovered automatically. For `obsidian/parsefood`, the script looks next to the configured inbox file for `parsefood.md`, then `git-parsefood.md`, then falls back to the inbox file with `#parsefood`.
+- More specific Gmail labels take precedence over parent labels. If a thread has both `obsidian` and `obsidian/git-aipit`, it is flushed only through `obsidian/git-aipit`; after a successful child flush, matching parent labels are removed too.
 - `MAX_THREADS` caps each label batch to avoid Apps Script timeouts. Run the web app again if the summary reports that the cap was reached.
 - Routes fail independently. Missing labels are skipped; target file errors are reported in the HTML summary without stopping other routes.
 - `make deploy` reuses the existing active deployment so bookmarked `/exec` URLs do not go stale.

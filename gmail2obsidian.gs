@@ -110,6 +110,34 @@ function expandRoutes(config) {
 }
 
 /**
+ * Orders more specific labels before their parents so child routes can clean up
+ * parent labels before parent routes are evaluated.
+ */
+function sortRoutesBySpecificity(routes) {
+  return routes
+    .map(function(route, index) {
+      return { route: route, index: index };
+    })
+    .sort(function(a, b) {
+      const depthDiff = getLabelDepth(b.route.label) - getLabelDepth(a.route.label);
+      if (depthDiff !== 0) return depthDiff;
+      const lengthDiff = b.route.label.length - a.route.label.length;
+      if (lengthDiff !== 0) return lengthDiff;
+      return a.index - b.index;
+    })
+    .map(function(item) {
+      return item.route;
+    });
+}
+
+/**
+ * Returns the number of segments in a Gmail label path.
+ */
+function getLabelDepth(labelName) {
+  return labelName.split("/").length;
+}
+
+/**
  * Finds the longest configured route that can act as the parent for a child label.
  */
 function getDynamicBaseRoute(labelName, routes) {
@@ -146,6 +174,78 @@ function resolveDynamicTarget(baseFile, suffix, config) {
 }
 
 /**
+ * Keeps a parent route from processing a thread that also has a child label.
+ */
+function filterThreadsForMostSpecificLabel(threads, routeLabel) {
+  const filtered = [];
+  for (let i = 0; i < threads.length; i++) {
+    if (!threadHasChildLabel(threads[i], routeLabel)) {
+      filtered.push(threads[i]);
+    }
+  }
+  return filtered;
+}
+
+/**
+ * Returns whether a thread has any Gmail label below routeLabel.
+ */
+function threadHasChildLabel(thread, routeLabel) {
+  const prefix = routeLabel + "/";
+  const labels = thread.getLabels();
+  for (let i = 0; i < labels.length; i++) {
+    if (labels[i].getName().indexOf(prefix) === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Looks up the route label and its ancestors so child flushes also clear parent labels.
+ */
+function getRouteLabelObjects(labelName) {
+  const names = getRouteLabelNames(labelName);
+  const labels = [];
+  for (let i = 0; i < names.length; i++) {
+    const label = GmailApp.getUserLabelByName(names[i]);
+    if (label) {
+      labels.push(label);
+    }
+  }
+  return labels;
+}
+
+/**
+ * Returns a route label followed by each ancestor label.
+ */
+function getRouteLabelNames(labelName) {
+  const parts = labelName.split("/");
+  const names = [];
+  for (let i = parts.length; i > 0; i--) {
+    names.push(parts.slice(0, i).join("/"));
+  }
+  return names;
+}
+
+/**
+ * Returns the first message body as one line, or an empty string when absent.
+ */
+function getThreadBodyText(thread) {
+  const messages = thread.getMessages();
+  if (!messages || messages.length === 0) {
+    return "";
+  }
+  return normalizeEntryBody(messages[0].getPlainBody() || "");
+}
+
+/**
+ * Collapses email body whitespace so each Obsidian entry stays on one line.
+ */
+function normalizeEntryBody(body) {
+  return body.replace(/\s+/g, " ").trim();
+}
+
+/**
  * Core logic: iterate over routes, read labeled emails, prepend to target
  * files, clean up labels. Returns array of per-route results.
  */
@@ -154,7 +254,7 @@ function flushToObsidian() {
   validateConfig(config);
   const results = [];
   const gmailAccountIndex = config.GMAIL_ACCOUNT_INDEX || 0;
-  const routes = expandRoutes(config);
+  const routes = sortRoutesBySpecificity(expandRoutes(config));
 
   for (let r = 0; r < routes.length; r++) {
     const route = routes[r];
@@ -166,7 +266,8 @@ function flushToObsidian() {
       }
 
       const maxThreads = config.MAX_THREADS || 50;
-      const threads = label.getThreads(0, maxThreads);
+      const fetchedThreads = label.getThreads(0, maxThreads);
+      const threads = filterThreadsForMostSpecificLabel(fetchedThreads, route.label);
       if (threads.length === 0) {
         results.push({ label: route.label, file: route.file, count: 0, subjects: [] });
         continue;
@@ -184,14 +285,18 @@ function flushToObsidian() {
       const subjects = [];
       const prefixMap = { "checkbox": "- [ ] ", "bullet": "- ", "none": "" };
       const prefix = config.ENTRY_PREFIX in prefixMap ? prefixMap[config.ENTRY_PREFIX] : "- [ ] ";
-      const entryLink = config.ENTRY_LINK !== false;
+      const entryLink = config.ENTRY_LINK === true;
 
       for (let i = 0; i < threads.length; i++) {
         const thread = threads[i];
         const subject = thread.getFirstMessageSubject() || "(no subject)";
+        const bodyText = getThreadBodyText(thread);
         const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + thread.getId();
 
         let text = entryLink ? "[" + escapeMd(subject) + "](" + permalink + ")" : subject;
+        if (bodyText) {
+          text += " (body: " + bodyText + ")";
+        }
         if (fallbackPrefix) {
           text = fallbackPrefix + " " + text;
         }
@@ -216,14 +321,17 @@ function flushToObsidian() {
       const existing = file.getBlob().getDataAsString();
       file.setContent(ensureProcessTag(block + existing));
 
-      // Only remove labels after successful flush
+      // Only remove labels after successful flush.
+      const labelsToRemove = getRouteLabelObjects(route.label);
       for (let i = 0; i < threads.length; i++) {
-        threads[i].removeLabel(label);
+        for (let j = 0; j < labelsToRemove.length; j++) {
+          threads[i].removeLabel(labelsToRemove[j]);
+        }
         threads[i].moveToArchive();
       }
 
       const result = { label: route.label, file: targetFile, count: threads.length, subjects: subjects };
-      if (threads.length >= maxThreads) {
+      if (fetchedThreads.length >= maxThreads) {
         result.warning = "Batch cap reached (" + maxThreads + "). More threads may remain — run again to continue.";
       }
       results.push(result);

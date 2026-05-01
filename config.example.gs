@@ -12,7 +12,7 @@ const CONFIG = {
   // GMAIL_ACCOUNT_INDEX: 0,           // Optional: Gmail account index for permalinks (default: 0)
   MAX_THREADS: 50,                     // Max threads per label per run (prevents execution timeout)
   ENTRY_PREFIX: "checkbox",              // "checkbox" (- [ ] ), "bullet" (- ), or "none"
-  ENTRY_LINK: true,                      // true: [subject](permalink), false: plain subject
+  ENTRY_LINK: false,                     // true: [subject](permalink), false: plain subject
   ENTRY_HEADER: true,                    // true: prepend "## Flushed YYYY-MM-DD" header, false: no header
   ROUTES: [
     { label: "obsidian", file: "@inbox.md" },
