@@ -10,6 +10,7 @@
  * Setup: see README.md or run `make setup` for instructions.
  * Configuration lives in config.gs (not committed — copy from config.example.gs).
  */
+const PROCESS_TAG = "#process";
 
 /**
  * Web app entry point. Calls flushToObsidian and returns an HTML summary.
@@ -213,7 +214,7 @@ function flushToObsidian() {
 
       const file = getFileByPath(targetFile, config);
       const existing = file.getBlob().getDataAsString();
-      file.setContent(block + existing);
+      file.setContent(ensureProcessTag(block + existing));
 
       // Only remove labels after successful flush
       for (let i = 0; i < threads.length; i++) {
@@ -321,6 +322,25 @@ function appendPath(folderPath, fileName) {
 function getLabelLeaf(suffix) {
   const parts = suffix.split("/");
   return parts[parts.length - 1];
+}
+
+/**
+ * Ensures a markdown file that receives entries is tagged for Obsidian processing.
+ */
+function ensureProcessTag(content) {
+  if (hasObsidianTag(content, "process")) {
+    return content;
+  }
+  return PROCESS_TAG + "\n\n" + content;
+}
+
+/**
+ * Checks for a standalone Obsidian tag without matching longer tags like #processing.
+ */
+function hasObsidianTag(content, tagName) {
+  const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp("(^|[^A-Za-z0-9_/-])#" + escapedTag + "(?=$|[^A-Za-z0-9_/-])");
+  return pattern.test(content);
 }
 
 /**
