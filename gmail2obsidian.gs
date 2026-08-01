@@ -11,6 +11,8 @@
  * Configuration lives in config.gs (not committed — copy from config.example.gs).
  */
 const PROCESS_TAG = "#process";
+const THREAD_MARKER_PREFIX = "gmail2obsidian-thread:";
+const FLUSH_LOCK_TIMEOUT_MS = 30000;
 
 /**
  * Web app entry point. Calls flushToObsidian and returns an HTML summary.
@@ -246,10 +248,38 @@ function normalizeEntryBody(body) {
 }
 
 /**
- * Core logic: iterate over routes, read labeled emails, prepend to target
- * files, clean up labels. Returns array of per-route results.
+ * Returns an invisible Markdown marker used to make thread writes idempotent.
+ */
+function getThreadMarker(threadId) {
+  return "<!-- " + THREAD_MARKER_PREFIX + threadId + " -->";
+}
+
+/**
+ * Returns whether a target file already contains an entry for a Gmail thread.
+ */
+function hasThreadMarker(content, threadId) {
+  return content.indexOf(getThreadMarker(threadId)) !== -1;
+}
+
+/**
+ * Serializes flushes so overlapping web requests cannot process the same labels.
  */
 function flushToObsidian() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(FLUSH_LOCK_TIMEOUT_MS);
+  try {
+    return flushToObsidianLocked();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Core logic: iterate over routes, read labeled emails, prepend to target
+ * files, clean up labels. Must be called while holding the script lock.
+ * Returns array of per-route results.
+ */
+function flushToObsidianLocked() {
   const config = CONFIG;
   validateConfig(config);
   const results = [];
@@ -281,45 +311,54 @@ function flushToObsidian() {
         fallbackPrefix = target.fallback ? "#" + getLabelLeaf(route.dynamicSuffix) : "";
       }
 
+      const file = getFileByPath(targetFile, config);
+      const existing = file.getBlob().getDataAsString();
       const entries = [];
       const subjects = [];
+      const pendingThreadIds = Object.create(null);
       const prefixMap = { "checkbox": "- [ ] ", "bullet": "- ", "none": "" };
       const prefix = config.ENTRY_PREFIX in prefixMap ? prefixMap[config.ENTRY_PREFIX] : "- [ ] ";
       const entryLink = config.ENTRY_LINK === true;
 
       for (let i = 0; i < threads.length; i++) {
         const thread = threads[i];
+        const threadId = thread.getId();
+        if (hasThreadMarker(existing, threadId) || pendingThreadIds[threadId]) {
+          continue;
+        }
+        pendingThreadIds[threadId] = true;
+
         const subject = thread.getFirstMessageSubject() || "(no subject)";
         const bodyText = getThreadBodyText(thread);
-        const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + thread.getId();
+        const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + threadId;
 
         let text = entryLink ? "[" + escapeMd(subject) + "](" + permalink + ")" : subject;
-        if (bodyText) {
+        if (bodyText && bodyText !== normalizeEntryBody(subject)) {
           text += " (body: " + bodyText + ")";
         }
         if (fallbackPrefix) {
           text = fallbackPrefix + " " + text;
         }
-        entries.push(prefix + text);
+        entries.push(prefix + text + " " + getThreadMarker(threadId));
         subjects.push(subject);
       }
 
-      const entryHeader = config.ENTRY_HEADER !== false;
-      let block;
-      if (entryHeader) {
-        const today = Utilities.formatDate(
-          new Date(),
-          Session.getScriptTimeZone(),
-          "yyyy-MM-dd"
-        );
-        block = "## Flushed " + today + "\n" + entries.join("\n") + "\n\n";
-      } else {
-        block = entries.join("\n") + "\n\n";
-      }
+      if (entries.length > 0) {
+        const entryHeader = config.ENTRY_HEADER !== false;
+        let block;
+        if (entryHeader) {
+          const today = Utilities.formatDate(
+            new Date(),
+            Session.getScriptTimeZone(),
+            "yyyy-MM-dd"
+          );
+          block = "## Flushed " + today + "\n" + entries.join("\n") + "\n\n";
+        } else {
+          block = entries.join("\n") + "\n\n";
+        }
 
-      const file = getFileByPath(targetFile, config);
-      const existing = file.getBlob().getDataAsString();
-      file.setContent(ensureProcessTag(block + existing));
+        file.setContent(ensureProcessTag(block + existing));
+      }
 
       // Only remove labels after successful flush.
       const labelsToRemove = getRouteLabelObjects(route.label);
@@ -330,7 +369,7 @@ function flushToObsidian() {
         threads[i].moveToArchive();
       }
 
-      const result = { label: route.label, file: targetFile, count: threads.length, subjects: subjects };
+      const result = { label: route.label, file: targetFile, count: entries.length, subjects: subjects };
       if (fetchedThreads.length >= maxThreads) {
         result.warning = "Batch cap reached (" + maxThreads + "). More threads may remain — run again to continue.";
       }
