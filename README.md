@@ -60,17 +60,17 @@ By default, each email becomes a checkbox under a dated flush header:
 #process
 
 ## Flushed 2026-04-29
-- [ ] Meeting notes from Tuesday (body: Please review the agenda before Thursday.) <!-- gmail2obsidian-thread:abc123 -->
-- [ ] Project proposal review <!-- gmail2obsidian-thread:def456 -->
+- [ ] Meeting notes from Tuesday (body: Please review the agenda before Thursday.)
+- [ ] Project proposal review
 ```
 
-The file-level `#process` tag is added once when needed. When the first message has body text, it is collapsed to one line and appended as `(body: ...)` after the subject, unless the normalized body is identical to the subject. Each entry also includes an HTML comment containing the Gmail thread ID; Obsidian does not render it, and the script uses it to prevent duplicate writes after retries or overlapping labels. `ENTRY_PREFIX` can be `"checkbox"`, `"bullet"`, or `"none"`. `ENTRY_LINK: true` makes subjects Gmail links, and `ENTRY_HEADER` controls the dated header.
+The file-level `#process` tag is added once when needed. When the first message has body text, it is collapsed to one line and appended as `(body: ...)` after the subject, unless the normalized body is identical to the subject. `ENTRY_PREFIX` can be `"checkbox"`, `"bullet"`, or `"none"`. `ENTRY_LINK: true` makes subjects Gmail links, and `ENTRY_HEADER` controls the dated header.
 
 Dynamic child labels use the same formatting. When a child label falls back to the configured inbox file, the label leaf is inserted as an Obsidian tag:
 
 ```markdown
 ## Flushed 2026-04-29
-- [ ] #parsefood Recipe follow-up <!-- gmail2obsidian-thread:abc123 -->
+- [ ] #parsefood Recipe follow-up
 ```
 
 ## Commands
@@ -90,7 +90,7 @@ make open    # open the Apps Script project
 - Gmail labels must match `CONFIG.ROUTES` exactly; nested labels use `/`.
 - Child Gmail labels below a configured route are discovered automatically. For `obsidian/parsefood`, the script looks next to the configured inbox file for `parsefood.md`, then `git-parsefood.md`, then falls back to the inbox file with `#parsefood`.
 - More specific Gmail labels take precedence over parent labels. If a thread has both `obsidian` and `obsidian/git-aipit`, it is flushed only through `obsidian/git-aipit`; after a successful child flush, matching parent labels are removed too.
-- Flush executions are serialized, and existing Gmail thread markers are skipped, so overlapping requests, cleanup retries, and sibling labels cannot write the same thread to one target twice.
+- Flush executions are serialized to prevent overlapping requests from writing the same labeled threads twice. Legacy Gmail thread markers from older versions are still recognized, but new entries do not include hidden comments.
 - `MAX_THREADS` caps each label batch to avoid Apps Script timeouts. Run the web app again if the summary reports that the cap was reached.
 - Routes fail independently. Missing labels are skipped; target file errors are reported in the HTML summary without stopping other routes.
 - `make deploy` reuses the existing active deployment so bookmarked `/exec` URLs do not go stale.

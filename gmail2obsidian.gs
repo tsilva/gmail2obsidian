@@ -11,7 +11,7 @@
  * Configuration lives in config.gs (not committed — copy from config.example.gs).
  */
 const PROCESS_TAG = "#process";
-const THREAD_MARKER_PREFIX = "gmail2obsidian-thread:";
+const LEGACY_THREAD_MARKER_PREFIX = "gmail2obsidian-thread:";
 const FLUSH_LOCK_TIMEOUT_MS = 30000;
 
 /**
@@ -248,17 +248,17 @@ function normalizeEntryBody(body) {
 }
 
 /**
- * Returns an invisible Markdown marker used to make thread writes idempotent.
+ * Returns the legacy Markdown marker used by older flushed entries.
  */
-function getThreadMarker(threadId) {
-  return "<!-- " + THREAD_MARKER_PREFIX + threadId + " -->";
+function getLegacyThreadMarker(threadId) {
+  return "<!-- " + LEGACY_THREAD_MARKER_PREFIX + threadId + " -->";
 }
 
 /**
- * Returns whether a target file already contains an entry for a Gmail thread.
+ * Returns whether a target file contains a legacy entry for a Gmail thread.
  */
-function hasThreadMarker(content, threadId) {
-  return content.indexOf(getThreadMarker(threadId)) !== -1;
+function hasLegacyThreadMarker(content, threadId) {
+  return content.indexOf(getLegacyThreadMarker(threadId)) !== -1;
 }
 
 /**
@@ -323,7 +323,7 @@ function flushToObsidianLocked() {
       for (let i = 0; i < threads.length; i++) {
         const thread = threads[i];
         const threadId = thread.getId();
-        if (hasThreadMarker(existing, threadId) || pendingThreadIds[threadId]) {
+        if (hasLegacyThreadMarker(existing, threadId) || pendingThreadIds[threadId]) {
           continue;
         }
         pendingThreadIds[threadId] = true;
@@ -339,7 +339,7 @@ function flushToObsidianLocked() {
         if (fallbackPrefix) {
           text = fallbackPrefix + " " + text;
         }
-        entries.push(prefix + text + " " + getThreadMarker(threadId));
+        entries.push(prefix + text);
         subjects.push(subject);
       }
 
