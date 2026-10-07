@@ -1,8 +1,10 @@
-<div align="center">
+<p align="center">
   <img src="./logo.png" alt="gmail2obsidian" width="512" />
-
-  **📬 Flush labeled Gmail threads into [Obsidian](https://obsidian.md/) task files with one click ✅**
-</div>
+  <br />
+  <!-- repo-tagline:start -->
+  <strong>📬 Turn labeled Gmail threads into Obsidian tasks ✅</strong>
+  <!-- repo-tagline:end -->
+</p>
 
 gmail2obsidian is a Google Apps Script that turns Gmail labels into Obsidian tasks stored in markdown files on Google Drive. Label emails while triaging your inbox, click the deployed web app URL, and each matching thread is prepended to the configured vault file.
 
