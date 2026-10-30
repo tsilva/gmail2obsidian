@@ -1,0 +1,7 @@
+#!/bin/sh
+# Keep native proxy CA trust process-local; forward unrelated native operations.
+if [ "$1" = "add-trusted-cert" ]; then
+  echo "Declined persistent proxy CA trust; use the client CA environment." >&2
+  exit 1
+fi
+exec /usr/bin/security "$@"

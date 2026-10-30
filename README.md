@@ -8,35 +8,130 @@
 
 gmail2obsidian is a Google Apps Script that turns Gmail labels into Obsidian tasks stored in markdown files on Google Drive. Label emails while triaging your inbox, open the deployed web app URL, then confirm **Flush labeled emails**. Each matching thread is prepended to the configured vault file.
 
-The script is deployed with `clasp`, runs as your Google Apps Script user, adds a file-level `#process` tag when new entries are written, and removes each processed label after a successful write to prevent repeats once cleanup completes.
+The script is deployed manually through the Google Apps Script editor, runs as your Google Apps Script user, adds a file-level `#process` tag when new entries are written, and removes each processed label after a successful write to prevent repeats once cleanup completes. No local Google OAuth login or clasp installation is required.
 
 Labels under a configured route are also routed automatically. For example, if `obsidian` sends to `@inbox.md`, then `obsidian/parsefood` sends to `parsefood.md` when that file exists, then `git-parsefood.md` when that exists, and otherwise falls back to `@inbox.md` with `#parsefood` prefixed to the entry. If a thread has both a parent label and a child label, the child label wins and the parent route does not also receive the thread.
 
 ## Setup
 
-Create a Google Apps Script project at [script.google.com](https://script.google.com), copy its Script ID from Project Settings, then run:
+For a new installation, prepare the local files:
 
 ```bash
-git clone git@github.com:tsilva/gmail2obsidian.git
+git clone https://github.com/tsilva/gmail2obsidian.git
 cd gmail2obsidian
-npm install -g @google/clasp
 make setup
-make login
 ```
 
-Enable the Apps Script API at [script.google.com/home/usersettings](https://script.google.com/home/usersettings), then edit `.clasp.json` and replace `YOUR_SCRIPT_ID_HERE` with your Script ID.
-
-Edit `config.gs` with your vault path and routes, then upload:
+Edit `config.gs` with your vault path and routes, then validate:
 
 ```bash
-make push
+make check test
 ```
 
-In Apps Script, create a Web app deployment with **Execute as: Me** and **Who has access: Only myself**. Keep project sharing **Restricted**, with only your account as an editor. Bookmark its web app URL. To use it, apply a configured Gmail label, open the bookmark, then click **Flush labeled emails**. Opening or refreshing the page never flushes mail. Confirmation expires after five minutes and can be used once; reload to obtain a new one after failure or expiry.
+Create a Google Apps Script project at [script.google.com](https://script.google.com). Add script files named `gmail2obsidian` and `config`, and paste the contents of `gmail2obsidian.gs` and your configured `config.gs` respectively. In **Project Settings**, enable **Show appsscript.json manifest file in editor**, then copy the local `appsscript.json` into that manifest and save. Keep credentials in Script Properties, never in source files.
 
-For later updates, copy the intended active Deployment ID from **Deploy → Manage deployments**, then run `make deploy DEPLOYMENT_ID=your-deployment-id`. This updates that deployment and preserves the bookmark. The command fails before uploading if the ID is omitted.
+Create a Web app deployment with **Execute as: Me** and **Who has access: Only myself**, authorizing the requested Gmail/Drive access as the owner when prompted. Keep project sharing **Restricted**, with only your account as an editor. Bookmark its web app URL. To use it, apply a configured Gmail label, open the bookmark, then click **Flush labeled emails**. Opening or refreshing the page never flushes mail. Confirmation expires after five minutes and can be used once; reload to obtain a new one after failure or expiry.
 
-## Optional signed import webhook
+### Updating an existing deployment manually
+
+1. Run `make check test` locally.
+2. Open the existing Apps Script project as its owner. Copy the updated `gmail2obsidian.gs` into the `gmail2obsidian` script file and save. Preserve the existing `config` and Script Properties unless intentionally changing configuration. Review any manifest changes separately, retaining the intended owner-only or opted-in webhook access policy.
+3. Choose **Deploy → Manage deployments**, select the intended existing web app, then **Edit → New version → Deploy**. Preserve its URL and **Execute as: Me** setting. Keep its selected access policy; an existing webhook deployment may use **Anyone** as described below.
+4. Open the existing bookmark to check the confirmation page without starting an import. A real flush modifies Gmail and Drive.
+
+Clasp is retired for this workflow. Do not reinstall or authenticate it to update the script. Updating local files or saving editor changes alone does not update a versioned deployment.
+
+## Native sandboxed import proxy
+
+The agent can run the configured import through a native Infisical proxy while
+receiving only `gmail2obsidian_proxy_placeholder`. No Google account login,
+clasp authorization, or local signing-key retrieval is needed. The source token
+is a separate, random 256-bit webhook capability held by Infisical and Google
+Apps Script. It cannot authenticate to Gmail, Drive, or the Apps Script API.
+
+`.infisical.yaml` selects the dedicated `gmail2obsidian` project, development
+(`dev`), and `/agents/webhook`. The root AGENTS.md maps the client to that folder.
+The separately provisioned proxied service references `WEBHOOK_PROXY_TOKEN` and
+replaces its exact placeholder in POST bodies only at the selected deployment
+path on `script.google.com`. Metadata alone does not configure that service.
+This source is independent of Gradlab's credentials and the legacy personal
+Agent Vault bundles.
+
+The proxy substitutes a token; it does not compute HMAC. The new server mode
+therefore requires exactly `action`, `timestamp`, `requestId`, and `token` in a
+JSON POST. It checks `WEBHOOK_PROXY_TOKEN` in Script Properties, fixed actions,
+timestamp limits and import replay IDs. `check` returns authentication status
+without Gmail/Drive access or import-state changes. `flush` uses the existing
+locked routing and count-only response. Legacy HMAC mode below remains separate;
+its key never enables proxy-token authentication. Because the proxy mode carries
+the token in the HTTPS body, do not record request bodies on either side.
+
+### Manual main-account handoff
+
+Main-account clasp access has been revoked. Do not log it back in. After local
+preparation, the owner must do these steps in their own browser:
+
+1. In the existing Apps Script project, replace the `gmail2obsidian` code with
+   the current local `gmail2obsidian.gs` and save. Do not replace `config` or
+   create another project. The deployed version already has the required
+   manifest scopes and public execute-as-owner web-app settings.
+2. In Infisical, open project **gmail2obsidian**, environment **Development**,
+   folder **/agents/webhook**. Copy the generated **WEBHOOK_PROXY_TOKEN** directly
+   into the same-named Apps Script **Project Settings → Script Properties**
+   field. Do not paste it into chat, files, command arguments or logs. Remove
+   `WEBHOOK_SECRET` if it was previously set and only proxy access is wanted.
+3. Choose **Deploy → Manage deployments → Edit → New version → Deploy** for
+   the existing web app. Keep **Execute as: Me** and **Who has access: Anyone**.
+   Preserve its deployment ID/URL and keep project sharing **Restricted**.
+
+This key transfer is trusted provisioning, not an ordinary client operation.
+For rotation, replace the token in Infisical and Apps Script together; native
+proxy runs read the new source on launch. No Agent Vault copy/sync is involved.
+
+### Native client command
+
+From this repository root, load only the workflow owner's metadata file. The
+client validates its exact deployment URL, uses no Google cookies or OAuth, and
+records no token, request body, email text or upstream error text in its receipts.
+
+```sh
+PATH="$PWD/scripts/no-persistent-ca:$PATH" \
+infisical secrets agent-proxy run \
+  --domain=https://app.infisical.com --path=/agents/webhook \
+  --sandbox=true --unmatched-host=block \
+  --allow-host=script.googleusercontent.com \
+  --allow-write=/Users/tsilva/repos/tsilva/private-workflow/.local/repo-inbox/gmail-webhook/receipts \
+  --set-env=NO_PROXY= --set-env=no_proxy= \
+  -- python3 -B scripts/webhook_client.py check \
+  --config /Users/tsilva/repos/tsilva/private-workflow/.local/repo-inbox/gmail-webhook/config.json
+```
+
+Validate metadata and review/remove conflicting inherited `INFISICAL_*` or proxy
+overrides before this command. The client requires the exact placeholder, native
+loopback proxy and local CA environment before startup. The maintained `security`
+shim declines only persistent CA installation; TLS still uses the native CA in
+the child environment. No global application or Keychain trust defaults change.
+
+Only after the manual handoff and a successful `authenticated` check is the route
+ready. For an authorized inbox flush, replace `check` with `flush` once. Require
+`ok: true` and `status: complete`, then establish local Drive sync before filing.
+Pending/partial/unknown receipts are not safe automatic retries. Stable local
+file timestamps alone do not prove cloud sync. Follow the inbox-flush skill's
+per-item questions and write authorization for subsequent filing and cleanup.
+
+### Verification status
+
+The updated server has 28 credential-free tests; the Python client has six tests
+covering endpoint/redirect constraints, placeholders, response filtering and
+private receipts. Nine native fake-key checks passed, including actual body
+substitution, sandbox file/network denial, replay/expiry handling and rejection
+of an unmapped destination path. Fake resources were removed; no persistent CA
+trust was added. After the owner updated the existing deployment and transferred
+the token, the native sandboxed `check` returned `authenticated` on 2026-10-30.
+No Google login or real import was used for that check. Import behavior and local
+Drive synchronization remain unverified until an authorized inbox-flush run.
+
+## Optional legacy HMAC import webhook
 
 An agent can trigger the existing configured import without receiving Google
 credentials, Gmail API access, or editor access to this project. The script still
@@ -46,7 +141,7 @@ fixed import operation. Imported content remains visible at its configured Drive
 destinations. Keep project sharing **Restricted** and do not grant the caller
 editor access.
 
-The webhook is disabled until `WEBHOOK_SECRET` is configured and the deployment
+The HMAC mode is disabled until `WEBHOOK_SECRET` is configured and the deployment
 allows external requests. To enable it in the main account:
 
 1. Upload the updated `gmail2obsidian.gs` and `appsscript.json` together. The
@@ -61,7 +156,7 @@ allows external requests. To enable it in the main account:
    manually clear `WEBHOOK_USED_REQUESTS`; the script manages replay protection.
 3. For this opt-in deployment, change `webapp.access` in `appsscript.json` from
    `MYSELF` to `ANYONE_ANONYMOUS`, retaining `USER_DEPLOYING`. Update the intended
-   deployment with `make deploy DEPLOYMENT_ID=your-deployment-id`, then verify
+   deployment using the manual update steps above, then verify
    **Execute as: Me** and **Who has access: Anyone** in **Manage deployments**.
    This makes the URL reachable without Google login; application-level signature
    verification controls imports. The checked-in default stays owner-only.
@@ -125,7 +220,7 @@ separate `private-skills_inbox-flush` skill or install a scheduled trigger.
 
 ## Configuration
 
-`make setup` copies `config.example.gs` to `config.gs`. `config.gs` is ignored by git but included in `clasp` uploads.
+`make setup` copies `config.example.gs` to `config.gs` if it does not exist. `config.gs` is ignored by git; copy its contents into the Apps Script `config` file during initial setup. Preserve the live configuration during routine code updates.
 
 ```javascript
 const CONFIG = {
@@ -167,11 +262,7 @@ Dynamic child labels use the same formatting. When a child label falls back to t
 ## Commands
 
 ```bash
-make setup   # install git hooks, create .clasp.json, and copy config.gs
-make login   # authenticate clasp with Google
-make push    # upload gmail2obsidian.gs, config.gs, and appsscript.json
-make deploy DEPLOYMENT_ID=your-deployment-id # validate, push and update this exact deployment
-make open    # open the Apps Script project
+make setup   # install git hooks and create config.gs if missing
 make check   # validate Apps Script syntax, example config, and manifest JSON
 make test    # run tests with mocked Google services
 ```
@@ -189,10 +280,10 @@ Local validation requires Node.js 24 or newer and Make, with no npm packages or 
 - An interruption after a Drive write and before Gmail cleanup can duplicate entries on retry. The script lock also cannot coordinate independent Drive editors; avoid editing destination files during a flush.
 - `MAX_THREADS` caps each label batch to avoid Apps Script timeouts. Run the web app again if the summary reports that the cap was reached.
 - Routes fail independently. Missing labels are skipped; target file errors are reported in the HTML summary without stopping other routes.
-- `make deploy` updates only the explicitly selected deployment; recheck its intended access policy after updating (owner-only by default, or the signed webhook opt-in above).
+- Manual updates must select the existing deployment to preserve its URL; recheck its intended access policy after updating (owner-only by default, or the webhook opt-in above).
 - `appsscript.json` requests Gmail modify, Drive and user email identity scopes. These are broad account permissions: configured labels and a vault folder restrict this code's behavior, not the OAuth grant. No trigger-management scope is requested. Removing a requested scope does not prove previously granted access was removed from Google's connection record.
 - Confirmations are owner-bound, short-lived and single-use, consumed under the same script lock as processing. All internal helpers end in `_`, preventing direct calls through `google.script.run`. Only `doGet`, `confirmFlush` and `doPost` are public handlers, with owner checks or signed-request verification.
-- `.claspignore` uploads only `gmail2obsidian.gs`, `config.gs`, and `appsscript.json`.
+- Only `gmail2obsidian.gs`, the intended `config.gs`, and reviewed `appsscript.json` changes belong in Apps Script; local tools and tests are not deployed.
 
 ## Architecture
 

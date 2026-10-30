@@ -74,7 +74,7 @@ function requireFlushOwner_() {
 }
 
 /**
- * Optional signed trigger. The secret stays in Script Properties; requests
+ * Optional authenticated trigger. Secrets stay in Script Properties; requests
  * cannot override routes, files, account, or processing limits.
  */
 function doPost(e) {
@@ -94,24 +94,35 @@ function handleWebhook_(e) {
   let request;
   try { request = JSON.parse(e.postData.contents); } catch (error) { return denied; }
   if (!request || Array.isArray(request) || typeof request !== "object"
-      || Object.keys(request).sort().join(",") !== "action,requestId,signature,timestamp"
-      || request.action !== "flush"
       || !Number.isSafeInteger(request.timestamp)
-      || typeof request.requestId !== "string" || !/^[a-f0-9]{32}$/.test(request.requestId)
+      || typeof request.requestId !== "string" || !/^[a-f0-9]{32}$/.test(request.requestId)) return denied;
+  const fields = Object.keys(request).sort().join(",");
+  const proxyMode = fields === "action,requestId,timestamp,token";
+  if (proxyMode) {
+    if ((request.action !== "flush" && request.action !== "check")
+        || typeof request.token !== "string" || !/^[a-f0-9]{64}$/.test(request.token)) return denied;
+  } else if (fields !== "action,requestId,signature,timestamp" || request.action !== "flush"
       || typeof request.signature !== "string" || !/^[a-f0-9]{64}$/.test(request.signature)) return denied;
   const now = Math.floor(Date.now() / 1000);
   if (request.timestamp < now - 120 || request.timestamp > now + 30) return denied;
   const properties = PropertiesService.getScriptProperties();
-  const secret = properties.getProperty("WEBHOOK_SECRET");
+  const secretProperty = proxyMode ? "WEBHOOK_PROXY_TOKEN" : "WEBHOOK_SECRET";
+  const secret = properties.getProperty(secretProperty);
   if (!secret || !/^[a-f0-9]{64}$/.test(secret)) return denied;
-  const payload = "gmail2obsidian:v1\nflush\n" + request.timestamp + "\n" + request.requestId;
-  const bytes = Utilities.computeHmacSha256Signature(payload, secret, Utilities.Charset.UTF_8);
-  const expected = bytes.map(function(b) { return (b & 255).toString(16).padStart(2, "0"); }).join("");
+  let expected = secret;
+  if (!proxyMode) {
+    const payload = "gmail2obsidian:v1\nflush\n" + request.timestamp + "\n" + request.requestId;
+    const bytes = Utilities.computeHmacSha256Signature(payload, secret, Utilities.Charset.UTF_8);
+    expected = bytes.map(function(b) { return (b & 255).toString(16).padStart(2, "0"); }).join("");
+  }
+  const supplied = proxyMode ? request.token : request.signature;
   let difference = 0;
   for (let i = 0; i < expected.length; i++) {
-    difference |= expected.charCodeAt(i) ^ request.signature.charCodeAt(i);
+    difference |= expected.charCodeAt(i) ^ supplied.charCodeAt(i);
   }
   if (difference !== 0) return denied;
+  // Authenticated smoke test: no Gmail, Drive, replay-state or lock operations.
+  if (request.action === "check") return { ok: true, status: "authenticated" };
 
   const lock = LockService.getScriptLock();
   // A busy import has not consumed this request and may be retried unchanged.
@@ -120,7 +131,7 @@ function handleWebhook_(e) {
     // Recheck after waiting and reject signatures made with a rotated key.
     const lockedNow = Math.floor(Date.now() / 1000);
     if (request.timestamp < lockedNow - 120 || request.timestamp > lockedNow + 30
-        || properties.getProperty("WEBHOOK_SECRET") !== secret) return denied;
+        || properties.getProperty(secretProperty) !== secret) return denied;
     // Durable replay protection: CacheService may evict unexpired entries.
     const used = JSON.parse(properties.getProperty("WEBHOOK_USED_REQUESTS") || "{}");
     if (!used || Array.isArray(used) || typeof used !== "object") throw new Error("Invalid replay state.");

@@ -418,3 +418,40 @@ test('waiting requests recheck expiry and key rotation under the script lock', (
     assert.equal(f.properties.has('WEBHOOK_USED_REQUESTS'), false);
   }
 });
+
+function proxyRequest(f, overrides = {}) {
+  return { action: 'flush', timestamp: Math.floor(f.clock.now / 1000),
+    requestId: '56'.repeat(16), token: 'cd'.repeat(32), ...overrides };
+}
+
+test('proxy-token check authenticates without accessing Gmail, Drive, locks, or replay state', () => {
+  const f = webhookFixture();
+  f.properties.set('WEBHOOK_PROXY_TOKEN', 'cd'.repeat(32));
+  f.context.GmailApp = new Proxy({}, { get() { throw new Error('CHECK read Gmail'); } });
+  f.context.DriveApp = new Proxy({}, { get() { throw new Error('CHECK read Drive'); } });
+  assert.deepEqual(postWebhook(f, proxyRequest(f, { action: 'check' })), { ok: true, status: 'authenticated' });
+  assert.deepEqual(f.events, []);
+  assert.equal(f.properties.has('WEBHOOK_USED_REQUESTS'), false);
+});
+
+test('proxy-token imports retain durable replay protection and configured routing', () => {
+  const f = webhookFixture({ threads: [{ labels: ['obsidian'], subject: 'Private subject' }] });
+  f.properties.set('WEBHOOK_PROXY_TOKEN', 'cd'.repeat(32));
+  const request = proxyRequest(f);
+  assert.deepEqual(postWebhook(f, request), { ok: true, status: 'complete', imported: 1, errors: 0, warnings: 0 });
+  assert.deepEqual(postWebhook(f, request), { ok: false, status: 'already_used' });
+  assert.equal(f.gmailThreads[0].archived, true);
+});
+
+test('proxy authentication fails closed without its own key and rejects altered schemas and stale requests', () => {
+  const f = webhookFixture();
+  // A valid legacy HMAC key never enables the token-based protocol.
+  assert.equal(postWebhook(f, proxyRequest(f, { token: webhookTestSecret })).status, 'unauthorized');
+  f.properties.set('WEBHOOK_PROXY_TOKEN', 'cd'.repeat(32));
+  for (const change of [
+    { token: 'gmail2obsidian_proxy_placeholder' }, { token: webhookTestSecret },
+    { signature: 'f'.repeat(64) }, { action: 'search' }, { query: 'in:inbox' },
+    { timestamp: 879 }, { timestamp: 1031 },
+  ]) assert.equal(postWebhook(f, proxyRequest(f, change)).status, 'unauthorized');
+  assert.deepEqual(f.events, []);
+});
