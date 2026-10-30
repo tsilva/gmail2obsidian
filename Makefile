@@ -1,22 +1,30 @@
 require-config:
 	@test -f config.gs || (echo "Error: config.gs not found. Run 'make setup' first, then edit config.gs" && exit 1)
 
-deploy: require-config
+.PHONY: check test push deploy require-config require-deployment
+check:
+	node --check scripts/check.cjs
+	node --check tests/gmail2obsidian.test.cjs
+	node scripts/check.cjs
+
+test:
+	node --test tests/gmail2obsidian.test.cjs
+
+require-deployment:
+	@test -n "$(DEPLOYMENT_ID)" || (echo "Error: set DEPLOYMENT_ID to the intended active deployment before uploading." && exit 1)
+
+push: require-config check test
 	clasp push
-	@DESC=$$(date +%Y-%m-%d_%H:%M); \
+
+deploy: require-deployment push
+	@set -eu; DESC=$$(date +%Y-%m-%d_%H:%M); \
 	VERSION_OUTPUT=$$(clasp version "$$DESC"); \
 	echo "$$VERSION_OUTPUT"; \
 	VERSION=$$(echo "$$VERSION_OUTPUT" | grep -Eo '[0-9]+' | tail -1); \
-	DEPLOYMENT_ID=$$(clasp deployments | awk '/@HEAD/{next} /^- / {print $$2; exit}'); \
-	if [ -n "$$DEPLOYMENT_ID" ]; then \
-		RESULT=$$(clasp redeploy "$$DEPLOYMENT_ID" -V "$$VERSION" -d "$$DESC"); \
-	else \
-		RESULT=$$(clasp deploy -V "$$VERSION" -d "$$DESC"); \
-		DEPLOYMENT_ID=$$(echo "$$RESULT" | grep -o 'AKfycb[^ ]*' | head -1); \
-	fi; \
+	RESULT=$$(clasp redeploy "$(DEPLOYMENT_ID)" -V "$$VERSION" -d "$$DESC") || exit $$?; \
 		echo "$$RESULT"; \
 		echo ""; \
-		echo "Web app URL: https://script.google.com/macros/s/$$DEPLOYMENT_ID/exec"
+		echo "Existing deployment updated. Review access settings in Apps Script before use."
 
 open:
 	clasp open
@@ -36,4 +44,4 @@ setup:
 	@echo "  4. Copy your Script ID from: script.google.com > Project Settings"
 	@echo "  5. Edit .clasp.json and replace YOUR_SCRIPT_ID_HERE"
 	@echo "  6. Edit config.gs with your vault path and routes"
-	@echo "  7. make deploy"
+	@echo "  7. make push, then create an owner-only Web app in Apps Script. For later updates, make deploy DEPLOYMENT_ID=your-deployment-id"

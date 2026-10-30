@@ -13,12 +13,151 @@
 const PROCESS_TAG = "#process";
 const LEGACY_THREAD_MARKER_PREFIX = "gmail2obsidian-thread:";
 const FLUSH_LOCK_TIMEOUT_MS = 30000;
+const FLUSH_INTENT_TTL_SECONDS = 300;
 
 /**
- * Web app entry point. Calls flushToObsidian and returns an HTML summary.
+ * Opening the bookmark only prepares an owner-confirmed, single-use action.
  */
 function doGet() {
-  const results = flushToObsidian();
+  requireFlushOwner_();
+  const token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+  CacheService.getUserCache().put("flush-intent:" + token,
+    String(Date.now() + FLUSH_INTENT_TTL_SECONDS * 1000), FLUSH_INTENT_TTL_SECONDS);
+  const html = "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+    + "</head><body><h1>Gmail to Obsidian</h1>"
+    + "<p>Flush labeled threads to your configured Drive files, then remove their labels and archive them.</p>"
+    + "<button id='flush' type='button'>Flush labeled emails</button><p id='status' role='status'></p>"
+    + "<script>document.getElementById('flush').addEventListener('click',function(){"
+    + "this.disabled=true;document.getElementById('status').textContent='Flushing…';"
+    + "google.script.run.withSuccessHandler(function(summary){document.open();document.write(summary);document.close();})"
+    + ".withFailureHandler(function(){document.getElementById('status').textContent='Flush failed or confirmation expired. Reload to confirm again.';})"
+    + ".confirmFlush(" + JSON.stringify(token) + ");});</script></body></html>";
+  return HtmlService.createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+/**
+ * Owner-only browser mutator. Consume intent while holding the flush lock.
+ */
+function confirmFlush(token) {
+  requireFlushOwner_();
+  if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) {
+    throw new Error("Invalid flush confirmation.");
+  }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(FLUSH_LOCK_TIMEOUT_MS);
+  try {
+    const cache = CacheService.getUserCache();
+    const key = "flush-intent:" + token;
+    const expiry = Number(cache.get(key));
+    cache.remove(key);
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+      throw new Error("Flush confirmation expired or already used. Reload to confirm again.");
+    }
+    return renderFlushSummary_(flushToObsidianLocked_());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Public webhook deployments must not expose the browser confirmation path.
+ * An unavailable visitor identity fails closed; effective user alone is unsafe
+ * because an execute-as-owner deployment uses the owner for every caller.
+ */
+function requireFlushOwner_() {
+  const visitor = Session.getActiveUser().getEmail();
+  const owner = Session.getEffectiveUser().getEmail();
+  if (!visitor || !owner || visitor !== owner) {
+    throw new Error("Open this page while signed in as the deployment owner.");
+  }
+}
+
+/**
+ * Optional signed trigger. The secret stays in Script Properties; requests
+ * cannot override routes, files, account, or processing limits.
+ */
+function doPost(e) {
+  try {
+    return webhookJson_(handleWebhook_(e));
+  } catch (error) {
+    // Never expose Google errors, paths, message content, or credentials.
+    return webhookJson_({ ok: false, status: "failed_or_unknown" });
+  }
+}
+
+function handleWebhook_(e) {
+  const denied = { ok: false, status: "unauthorized" };
+  if (!e || !e.postData || typeof e.postData.contents !== "string"
+      || e.postData.contents.length > 1024
+      || String(e.postData.type).split(";")[0].trim() !== "application/json") return denied;
+  let request;
+  try { request = JSON.parse(e.postData.contents); } catch (error) { return denied; }
+  if (!request || Array.isArray(request) || typeof request !== "object"
+      || Object.keys(request).sort().join(",") !== "action,requestId,signature,timestamp"
+      || request.action !== "flush"
+      || !Number.isSafeInteger(request.timestamp)
+      || typeof request.requestId !== "string" || !/^[a-f0-9]{32}$/.test(request.requestId)
+      || typeof request.signature !== "string" || !/^[a-f0-9]{64}$/.test(request.signature)) return denied;
+  const now = Math.floor(Date.now() / 1000);
+  if (request.timestamp < now - 120 || request.timestamp > now + 30) return denied;
+  const properties = PropertiesService.getScriptProperties();
+  const secret = properties.getProperty("WEBHOOK_SECRET");
+  if (!secret || !/^[a-f0-9]{64}$/.test(secret)) return denied;
+  const payload = "gmail2obsidian:v1\nflush\n" + request.timestamp + "\n" + request.requestId;
+  const bytes = Utilities.computeHmacSha256Signature(payload, secret, Utilities.Charset.UTF_8);
+  const expected = bytes.map(function(b) { return (b & 255).toString(16).padStart(2, "0"); }).join("");
+  let difference = 0;
+  for (let i = 0; i < expected.length; i++) {
+    difference |= expected.charCodeAt(i) ^ request.signature.charCodeAt(i);
+  }
+  if (difference !== 0) return denied;
+
+  const lock = LockService.getScriptLock();
+  // A busy import has not consumed this request and may be retried unchanged.
+  if (!lock.tryLock(1000)) return { ok: false, status: "busy" };
+  try {
+    // Recheck after waiting and reject signatures made with a rotated key.
+    const lockedNow = Math.floor(Date.now() / 1000);
+    if (request.timestamp < lockedNow - 120 || request.timestamp > lockedNow + 30
+        || properties.getProperty("WEBHOOK_SECRET") !== secret) return denied;
+    // Durable replay protection: CacheService may evict unexpired entries.
+    const used = JSON.parse(properties.getProperty("WEBHOOK_USED_REQUESTS") || "{}");
+    if (!used || Array.isArray(used) || typeof used !== "object") throw new Error("Invalid replay state.");
+    Object.keys(used).forEach(function(id) {
+      if (!Number.isSafeInteger(used[id])) throw new Error("Invalid replay state.");
+      if (used[id] < lockedNow) delete used[id];
+    });
+    if (Object.prototype.hasOwnProperty.call(used, request.requestId)) {
+      return { ok: false, status: "already_used" };
+    }
+    // Stay below the 9 KB per-property quota even during unexpected bursts.
+    if (Object.keys(used).length >= 100) return { ok: false, status: "busy" };
+    used[request.requestId] = request.timestamp + 120;
+    properties.setProperty("WEBHOOK_USED_REQUESTS", JSON.stringify(used));
+    const results = flushToObsidianLocked_();
+    const errors = results.filter(function(r) { return r.error; }).length;
+    const warnings = results.filter(function(r) { return r.warning; }).length;
+    return {
+      ok: errors === 0 && warnings === 0,
+      status: errors ? "partial_failure" : warnings ? "more_may_remain" : "complete",
+      imported: results.reduce(function(sum, r) { return sum + (r.count || 0); }, 0),
+      errors: errors,
+      warnings: warnings
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function webhookJson_(result) {
+  return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Render only server-generated summaries; all imported strings are escaped.
+ */
+function renderFlushSummary_(results) {
   const totalCount = results.reduce(function(sum, r) { return sum + (r.count || 0); }, 0);
 
   let html = "<html><head>"
@@ -38,15 +177,15 @@ function doGet() {
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
     if (r.error) {
-      html += "<div class='error'>Error [" + escapeHtml(r.label) + " → " + escapeHtml(r.file) + "]: " + escapeHtml(r.error) + "</div>";
+      html += "<div class='error'>Error [" + escapeHtml_(r.label) + " → " + escapeHtml_(r.file) + "]: " + escapeHtml_(r.error) + "</div>";
     }
     if (r.warning) {
-      html += "<div class='error'>" + escapeHtml(r.warning) + "</div>";
+      html += "<div class='error'>" + escapeHtml_(r.warning) + "</div>";
     }
     if (r.count > 0) {
-      html += "<h2>" + escapeHtml(r.file) + " (" + r.count + ")</h2><ul>";
+      html += "<h2>" + escapeHtml_(r.file) + " (" + r.count + ")</h2><ul>";
       for (let j = 0; j < r.subjects.length; j++) {
-        html += "<li>" + escapeHtml(r.subjects[j]) + "</li>";
+        html += "<li>" + escapeHtml_(r.subjects[j]) + "</li>";
       }
       html += "</ul>";
     }
@@ -54,14 +193,13 @@ function doGet() {
 
   html += "</body></html>";
 
-  return HtmlService.createHtmlOutput(html)
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+  return html;
 }
 
 /**
  * Validates config at startup. Throws with a clear message if misconfigured.
  */
-function validateConfig(config) {
+function validateConfig_(config) {
   if (!config.ROUTES || !Array.isArray(config.ROUTES) || config.ROUTES.length === 0) {
     throw new Error("CONFIG.ROUTES must be a non-empty array of { label, file } objects.");
   }
@@ -81,7 +219,7 @@ function validateConfig(config) {
  * labels such as "obsidian/parsefood" by resolving parsefood.md,
  * git-parsefood.md, or falling back to the base inbox file.
  */
-function expandRoutes(config) {
+function expandRoutes_(config) {
   const configuredRoutes = config.ROUTES.slice();
   const explicitLabels = {};
   for (let i = 0; i < configuredRoutes.length; i++) {
@@ -95,7 +233,7 @@ function expandRoutes(config) {
     const labelName = userLabels[l].getName();
     if (explicitLabels[labelName]) continue;
 
-    const baseRoute = getDynamicBaseRoute(labelName, configuredRoutes);
+    const baseRoute = getDynamicBaseRoute_(labelName, configuredRoutes);
     if (!baseRoute) continue;
 
     const suffix = labelName.slice(baseRoute.label.length + 1);
@@ -115,13 +253,13 @@ function expandRoutes(config) {
  * Orders more specific labels before their parents so child routes can clean up
  * parent labels before parent routes are evaluated.
  */
-function sortRoutesBySpecificity(routes) {
+function sortRoutesBySpecificity_(routes) {
   return routes
     .map(function(route, index) {
       return { route: route, index: index };
     })
     .sort(function(a, b) {
-      const depthDiff = getLabelDepth(b.route.label) - getLabelDepth(a.route.label);
+      const depthDiff = getLabelDepth_(b.route.label) - getLabelDepth_(a.route.label);
       if (depthDiff !== 0) return depthDiff;
       const lengthDiff = b.route.label.length - a.route.label.length;
       if (lengthDiff !== 0) return lengthDiff;
@@ -135,14 +273,14 @@ function sortRoutesBySpecificity(routes) {
 /**
  * Returns the number of segments in a Gmail label path.
  */
-function getLabelDepth(labelName) {
+function getLabelDepth_(labelName) {
   return labelName.split("/").length;
 }
 
 /**
  * Finds the longest configured route that can act as the parent for a child label.
  */
-function getDynamicBaseRoute(labelName, routes) {
+function getDynamicBaseRoute_(labelName, routes) {
   let match = null;
   for (let i = 0; i < routes.length; i++) {
     const route = routes[i];
@@ -158,16 +296,16 @@ function getDynamicBaseRoute(labelName, routes) {
 /**
  * Resolves a dynamic label suffix to a target file next to the base inbox file.
  */
-function resolveDynamicTarget(baseFile, suffix, config) {
-  const folderPath = getFolderPath(baseFile);
+function resolveDynamicTarget_(baseFile, suffix, config) {
+  const folderPath = getFolderPath_(baseFile);
   const slug = suffix.replace(/\//g, "-");
   const candidates = [
-    appendPath(folderPath, slug + ".md"),
-    appendPath(folderPath, "git-" + slug + ".md")
+    appendPath_(folderPath, slug + ".md"),
+    appendPath_(folderPath, "git-" + slug + ".md")
   ];
 
   for (let i = 0; i < candidates.length; i++) {
-    if (fileExistsByPath(candidates[i], config)) {
+    if (fileExistsByPath_(candidates[i], config)) {
       return { file: candidates[i], fallback: false };
     }
   }
@@ -178,10 +316,10 @@ function resolveDynamicTarget(baseFile, suffix, config) {
 /**
  * Keeps a parent route from processing a thread that also has a child label.
  */
-function filterThreadsForMostSpecificLabel(threads, routeLabel) {
+function filterThreadsForMostSpecificLabel_(threads, routeLabel) {
   const filtered = [];
   for (let i = 0; i < threads.length; i++) {
-    if (!threadHasChildLabel(threads[i], routeLabel)) {
+    if (!threadHasChildLabel_(threads[i], routeLabel)) {
       filtered.push(threads[i]);
     }
   }
@@ -191,7 +329,7 @@ function filterThreadsForMostSpecificLabel(threads, routeLabel) {
 /**
  * Returns whether a thread has any Gmail label below routeLabel.
  */
-function threadHasChildLabel(thread, routeLabel) {
+function threadHasChildLabel_(thread, routeLabel) {
   const prefix = routeLabel + "/";
   const labels = thread.getLabels();
   for (let i = 0; i < labels.length; i++) {
@@ -205,8 +343,8 @@ function threadHasChildLabel(thread, routeLabel) {
 /**
  * Looks up the route label and its ancestors so child flushes also clear parent labels.
  */
-function getRouteLabelObjects(labelName) {
-  const names = getRouteLabelNames(labelName);
+function getRouteLabelObjects_(labelName) {
+  const names = getRouteLabelNames_(labelName);
   const labels = [];
   for (let i = 0; i < names.length; i++) {
     const label = GmailApp.getUserLabelByName(names[i]);
@@ -220,7 +358,7 @@ function getRouteLabelObjects(labelName) {
 /**
  * Returns a route label followed by each ancestor label.
  */
-function getRouteLabelNames(labelName) {
+function getRouteLabelNames_(labelName) {
   const parts = labelName.split("/");
   const names = [];
   for (let i = parts.length; i > 0; i--) {
@@ -232,43 +370,43 @@ function getRouteLabelNames(labelName) {
 /**
  * Returns the first message body as one line, or an empty string when absent.
  */
-function getThreadBodyText(thread) {
+function getThreadBodyText_(thread) {
   const messages = thread.getMessages();
   if (!messages || messages.length === 0) {
     return "";
   }
-  return normalizeEntryBody(messages[0].getPlainBody() || "");
+  return normalizeEntryBody_(messages[0].getPlainBody() || "");
 }
 
 /**
  * Collapses email body whitespace so each Obsidian entry stays on one line.
  */
-function normalizeEntryBody(body) {
+function normalizeEntryBody_(body) {
   return body.replace(/\s+/g, " ").trim();
 }
 
 /**
  * Returns the legacy Markdown marker used by older flushed entries.
  */
-function getLegacyThreadMarker(threadId) {
+function getLegacyThreadMarker_(threadId) {
   return "<!-- " + LEGACY_THREAD_MARKER_PREFIX + threadId + " -->";
 }
 
 /**
  * Returns whether a target file contains a legacy entry for a Gmail thread.
  */
-function hasLegacyThreadMarker(content, threadId) {
-  return content.indexOf(getLegacyThreadMarker(threadId)) !== -1;
+function hasLegacyThreadMarker_(content, threadId) {
+  return content.indexOf(getLegacyThreadMarker_(threadId)) !== -1;
 }
 
 /**
  * Serializes flushes so overlapping web requests cannot process the same labels.
  */
-function flushToObsidian() {
+function flushToObsidian_() {
   const lock = LockService.getScriptLock();
   lock.waitLock(FLUSH_LOCK_TIMEOUT_MS);
   try {
-    return flushToObsidianLocked();
+    return flushToObsidianLocked_();
   } finally {
     lock.releaseLock();
   }
@@ -279,12 +417,12 @@ function flushToObsidian() {
  * files, clean up labels. Must be called while holding the script lock.
  * Returns array of per-route results.
  */
-function flushToObsidianLocked() {
+function flushToObsidianLocked_() {
   const config = CONFIG;
-  validateConfig(config);
+  validateConfig_(config);
   const results = [];
   const gmailAccountIndex = config.GMAIL_ACCOUNT_INDEX || 0;
-  const routes = sortRoutesBySpecificity(expandRoutes(config));
+  const routes = sortRoutesBySpecificity_(expandRoutes_(config));
 
   for (let r = 0; r < routes.length; r++) {
     const route = routes[r];
@@ -297,7 +435,7 @@ function flushToObsidianLocked() {
 
       const maxThreads = config.MAX_THREADS || 50;
       const fetchedThreads = label.getThreads(0, maxThreads);
-      const threads = filterThreadsForMostSpecificLabel(fetchedThreads, route.label);
+      const threads = filterThreadsForMostSpecificLabel_(fetchedThreads, route.label);
       if (threads.length === 0) {
         results.push({ label: route.label, file: route.file, count: 0, subjects: [] });
         continue;
@@ -306,12 +444,12 @@ function flushToObsidianLocked() {
       let targetFile = route.file;
       let fallbackPrefix = route.fallbackPrefix || "";
       if (route.dynamicSuffix) {
-        const target = resolveDynamicTarget(route.file, route.dynamicSuffix, config);
+        const target = resolveDynamicTarget_(route.file, route.dynamicSuffix, config);
         targetFile = target.file;
-        fallbackPrefix = target.fallback ? "#" + getLabelLeaf(route.dynamicSuffix) : "";
+        fallbackPrefix = target.fallback ? "#" + getLabelLeaf_(route.dynamicSuffix) : "";
       }
 
-      const file = getFileByPath(targetFile, config);
+      const file = getFileByPath_(targetFile, config);
       const existing = file.getBlob().getDataAsString();
       const entries = [];
       const subjects = [];
@@ -323,18 +461,19 @@ function flushToObsidianLocked() {
       for (let i = 0; i < threads.length; i++) {
         const thread = threads[i];
         const threadId = thread.getId();
-        if (hasLegacyThreadMarker(existing, threadId) || pendingThreadIds[threadId]) {
+        if (hasLegacyThreadMarker_(existing, threadId) || pendingThreadIds[threadId]) {
           continue;
         }
         pendingThreadIds[threadId] = true;
 
         const subject = thread.getFirstMessageSubject() || "(no subject)";
-        const bodyText = getThreadBodyText(thread);
+        const bodyText = getThreadBodyText_(thread);
         const permalink = "https://mail.google.com/mail/u/" + gmailAccountIndex + "/#all/" + threadId;
 
-        let text = entryLink ? "[" + escapeMd(subject) + "](" + permalink + ")" : subject;
-        if (bodyText && bodyText !== normalizeEntryBody(subject)) {
-          text += " (body: " + bodyText + ")";
+        const subjectText = escapeMd_(subject);
+        let text = entryLink ? "[" + subjectText + "](" + permalink + ")" : subjectText;
+        if (bodyText && bodyText !== normalizeEntryBody_(subject)) {
+          text += " (body: " + escapeMd_(bodyText) + ")";
         }
         if (fallbackPrefix) {
           text = fallbackPrefix + " " + text;
@@ -357,11 +496,11 @@ function flushToObsidianLocked() {
           block = entries.join("\n") + "\n\n";
         }
 
-        file.setContent(ensureProcessTag(block + existing));
+        file.setContent(ensureProcessTag_(block + existing));
       }
 
       // Only remove labels after successful flush.
-      const labelsToRemove = getRouteLabelObjects(route.label);
+      const labelsToRemove = getRouteLabelObjects_(route.label);
       for (let i = 0; i < threads.length; i++) {
         for (let j = 0; j < labelsToRemove.length; j++) {
           threads[i].removeLabel(labelsToRemove[j]);
@@ -387,7 +526,7 @@ function flushToObsidianLocked() {
  * Uses VAULT_FOLDER_ID (direct access, works with shared folders) if set,
  * otherwise navigates the VAULT_FOLDER path from the Drive root.
  */
-function getVaultFolder(config) {
+function getVaultFolder_(config) {
   if (config.VAULT_FOLDER_ID) {
     return DriveApp.getFolderById(config.VAULT_FOLDER_ID);
   }
@@ -404,9 +543,9 @@ function getVaultFolder(config) {
 /**
  * Navigates to a folder path relative to the vault root.
  */
-function getFolderByPath(relativePath, config) {
+function getFolderByPath_(relativePath, config) {
   const parts = relativePath ? relativePath.split("/") : [];
-  let folder = getVaultFolder(config);
+  let folder = getVaultFolder_(config);
 
   for (let i = 0; i < parts.length; i++) {
     const folders = folder.getFoldersByName(parts[i]);
@@ -423,10 +562,10 @@ function getFolderByPath(relativePath, config) {
  * Navigates the Google Drive folder path to find a file.
  * relativePath is relative to the vault root (e.g., "Areas/Reading/Inbox.md").
  */
-function getFileByPath(relativePath, config) {
+function getFileByPath_(relativePath, config) {
   const parts = relativePath.split("/");
   const fileName = parts.pop();
-  const folder = getFolderByPath(parts.join("/"), config);
+  const folder = getFolderByPath_(parts.join("/"), config);
 
   const files = folder.getFilesByName(fileName);
   if (!files.hasNext()) {
@@ -438,9 +577,9 @@ function getFileByPath(relativePath, config) {
 /**
  * Returns whether a file exists at a vault-relative path.
  */
-function fileExistsByPath(relativePath, config) {
+function fileExistsByPath_(relativePath, config) {
   try {
-    getFileByPath(relativePath, config);
+    getFileByPath_(relativePath, config);
     return true;
   } catch (e) {
     return false;
@@ -450,7 +589,7 @@ function fileExistsByPath(relativePath, config) {
 /**
  * Returns the folder portion of a vault-relative file path.
  */
-function getFolderPath(relativePath) {
+function getFolderPath_(relativePath) {
   const parts = relativePath.split("/");
   parts.pop();
   return parts.join("/");
@@ -459,14 +598,14 @@ function getFolderPath(relativePath) {
 /**
  * Appends a file name to a vault-relative folder path.
  */
-function appendPath(folderPath, fileName) {
+function appendPath_(folderPath, fileName) {
   return folderPath ? folderPath + "/" + fileName : fileName;
 }
 
 /**
  * Returns the last segment of a nested Gmail label suffix.
  */
-function getLabelLeaf(suffix) {
+function getLabelLeaf_(suffix) {
   const parts = suffix.split("/");
   return parts[parts.length - 1];
 }
@@ -474,8 +613,8 @@ function getLabelLeaf(suffix) {
 /**
  * Ensures a markdown file that receives entries is tagged for Obsidian processing.
  */
-function ensureProcessTag(content) {
-  if (hasObsidianTag(content, "process")) {
+function ensureProcessTag_(content) {
+  if (hasObsidianTag_(content, "process")) {
     return content;
   }
   return PROCESS_TAG + "\n\n" + content;
@@ -484,28 +623,29 @@ function ensureProcessTag(content) {
 /**
  * Checks for a standalone Obsidian tag without matching longer tags like #processing.
  */
-function hasObsidianTag(content, tagName) {
+function hasObsidianTag_(content, tagName) {
   const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp("(^|[^A-Za-z0-9_/-])#" + escapedTag + "(?=$|[^A-Za-z0-9_/-])");
   return pattern.test(content);
 }
 
 /**
- * Escapes characters that have special meaning in Markdown link syntax.
- * Prevents crafted email subjects from injecting arbitrary URLs.
+ * Keep imported text literal, including links, embeds, HTML and backslashes.
+ * Markdown permits escaping all ASCII punctuation with a backslash.
  */
-function escapeMd(text) {
-  return text
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)");
+function escapeMd_(text) {
+  return normalizeEntryBody_(text).replace(/[!-/:-@\[-`{-~]/g, function(character) {
+    if (character === "<") return "&lt;";
+    if (character === ">") return "&gt;";
+    if (character === "&") return "&amp;";
+    return "\\" + character;
+  });
 }
 
 /**
  * Escapes HTML special characters for safe display.
  */
-function escapeHtml(text) {
+function escapeHtml_(text) {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
