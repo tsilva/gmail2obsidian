@@ -10,18 +10,79 @@ permissions:
 jobs:
   validate:
     name: Validate Apps Script
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Check out source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: '24'
-          package-manager-cache: false
+      # The repository permits local actions only. Use runner tools directly.
+      - name: Check out the tested revision with native Git
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEST_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+          TEST_PULL_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          import re
+          import subprocess
+          import sys
+
+          try:
+              revision = os.environ["TEST_REVISION"]
+              repository = os.environ["GITHUB_REPOSITORY"]
+              server = os.environ["GITHUB_SERVER_URL"]
+              number = os.environ.get("TEST_PULL_NUMBER", "")
+              if not re.fullmatch(r"[0-9a-f]{40}", revision):
+                  raise ValueError("Invalid revision")
+              if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository) or server != "https://github.com":
+                  raise ValueError("Unexpected repository")
+              if number and not re.fullmatch(r"[1-9][0-9]*", number):
+                  raise ValueError("Invalid pull request")
+              environment = dict(os.environ)
+              token = environment.pop("GH_TOKEN")
+              authorization = base64.b64encode(("x-access-token:" + token).encode()).decode()
+              environment.update(GIT_CONFIG_COUNT="1",
+                                 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader",
+                                 GIT_CONFIG_VALUE_0="AUTHORIZATION: basic " + authorization,
+                                 GIT_TERMINAL_PROMPT="0")
+              def git(*args):
+                  return subprocess.run(["git", *args], env=environment,
+                                        check=True, capture_output=True, timeout=120)
+              git("init", "--quiet")
+              git("remote", "add", "origin", server + "/" + repository + ".git")
+              ref = "refs/pull/" + number + "/head" if number else revision
+              git("fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", "origin", ref)
+              git("checkout", "--quiet", "--detach", "FETCH_HEAD")
+              if git("rev-parse", "HEAD").stdout.decode().strip() != revision:
+                  raise ValueError("Checkout revision differs")
+          except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+              print("::error::Repository checkout failed; private authentication details suppressed.")
+              sys.exit(1)
+          PY
+      - name: Select preinstalled Node.js 24
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          cache = Path(os.environ["RUNNER_TOOL_CACHE"]) / "node"
+          versions = [path for path in cache.glob("24.*")
+                      if re.fullmatch(r"24\.\d+\.\d+", path.name)
+                      and (path / "x64/bin/node").is_file()]
+          if not versions:
+              raise SystemExit("::error::Node.js 24 is missing from the runner tool cache.")
+          version = max(versions, key=lambda path: tuple(map(int, path.name.split("."))))
+          binary = version / "x64/bin/node"
+          major = subprocess.check_output([str(binary), "-p", "process.versions.node.split('.')[0]"], text=True).strip()
+          if major != "24":
+              raise SystemExit("::error::Cached Node.js version does not match Node.js 24.")
+          with open(os.environ["GITHUB_PATH"], "a") as output:
+              output.write(str(binary.parent) + "\n")
+          PY
       - name: Check syntax and configuration
         run: make check
       - name: Test with mocked Google services

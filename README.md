@@ -267,7 +267,7 @@ make check   # validate Apps Script syntax, example config, and manifest JSON
 make test    # run tests with mocked Google services
 ```
 
-Local validation requires Node.js 24 or newer and Make, with no npm packages or Google credentials. GitHub Actions runs `make check` and `make test` on pushes and pull requests. Tests cover task output, failed writes, child-label routing, legacy markers, locking, inert GET, confirmation expiry/replay, hostile email markup, signed POST verification, durable replay rejection, owner checks and private RPC helpers. A live flush modifies real mail and Drive files; verify the confirmation page without pressing its button when only checking deployment.
+Local validation requires Node.js 24 or newer, Python 3 and Make, with no npm packages or Google credentials. GitHub Actions runs `make check` and `make test` on pushes and pull requests. CI uses native Git checkout and preinstalled Node.js 24 from the Ubuntu 24.04 runner tool cache, supporting the repository's local-actions-only policy without external actions or runtime downloads. Checkout verifies the tested commit and does not persist its read-only job token. Tests cover task output, failed writes, child-label routing, legacy markers, locking, inert GET, confirmation expiry/replay, hostile email markup, signed POST verification, durable replay rejection, owner checks and private RPC helpers. A live flush modifies real mail and Drive files; verify the confirmation page without pressing its button when only checking deployment.
 
 ## Notes
 
