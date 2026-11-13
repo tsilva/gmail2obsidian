@@ -42,38 +42,13 @@ log clasp back in, restore Google OAuth credentials, or grant script editor
 access to an agent to finish webhook setup. The user updates the live script
 and Script Properties manually; local edits do not establish deployment.
 
-Use the native `.infisical.yaml` project/environment and this reviewed mapping:
-
-| Service / client | Infisical folder | Required placeholder before client startup |
-| --- | --- | --- |
-| Fixed import webhook (`scripts/webhook_client.py`) | `/agents/webhook` | `WEBHOOK_PROXY_TOKEN=gmail2obsidian_proxy_placeholder` |
-
-The dedicated service substitutes that placeholder only in request bodies to
-the configured `script.google.com/macros/s/DEPLOYMENT_ID/exec` path. Its source
-is `WEBHOOK_PROXY_TOKEN` in this project's development folder, not a Google
-credential or a local HMAC key. The proxy-compatible server independently
-verifies that token from its own Script Properties. No real key reaches the
-ordinary client. Unknown services, missing bindings, failed authentication and
-unsupported clients must stop without another project's key, Keychain signing,
-native injection, or legacy vault-tool fallback.
-
-Run from this repository root with the mapped path, explicitly pinned
-`--domain=https://app.infisical.com --sandbox=true --unmatched-host=block`.
-Only `script.googleusercontent.com` is additionally allowed, for Google's
-body-free response GET; never broaden that to a wildcard. The client rejects
-unexpected redirects and never forwards the POST body to the response host.
-Use `scripts/no-persistent-ca/security` first in the launcher's PATH to decline
-persistent CA installation, retaining the native process-local `SSL_CERT_FILE`
-and TLS verification. Do not disable the sandbox or certificate validation.
-Validate native metadata as data and remove conflicting inherited Infisical
-scope/proxy settings before launching. The native sandbox does not sandbox the
-outer Codex Desktop process.
-
-Read README.md's native-proxy section for the exact command and manual handoff.
-Personal URL/configuration/receipts remain with private-workflow, outside this
-repository. `check` is non-mutating; `flush` imports/archives real matching mail
-and writes configured Drive notes. Setup and fake-key checks do not authorize a
-live import. Do not automatically repeat an unknown or partial import outcome.
+The webhook client reads its supplied environment and private configuration.
+`check` verifies authentication only. An explicitly authorized import uses `flush` once; it can change Gmail/Drive data and must retain the
+inbox-flush and Obsidian write approvals. Inspect pending, partial or unknown
+receipts before retrying. The client preserves its single credential-free Google
+response redirect, fixed deployment and count-only output. Missing access must
+stop without raw-key, local signing-key or alternate-launcher fallback. Trusted
+source rotation remains separate from ordinary startup.
 
 ## Key Conventions
 

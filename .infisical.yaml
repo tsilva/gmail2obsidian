@@ -1,8 +1,0 @@
-# Metadata only. The native proxied service is provisioned separately.
-version: 1
-general:
-  domain: https://app.infisical.com
-secrets-management:
-  project-id: c35d0cad-2262-4298-8139-2d393b659cc9
-  environment: dev
-  secret-path: /agents/webhook

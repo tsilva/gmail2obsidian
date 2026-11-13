@@ -41,21 +41,12 @@ Create a Web app deployment with **Execute as: Me** and **Who has access: Only m
 
 Clasp is retired for this workflow. Do not reinstall or authenticate it to update the script. Updating local files or saving editor changes alone does not update a versioned deployment.
 
-## Native sandboxed import proxy
+## Optional proxy-token import
 
-The agent can run the configured import through a native Infisical proxy while
-receiving only `gmail2obsidian_proxy_placeholder`. No Google account login,
-clasp authorization, or local signing-key retrieval is needed. The source token
-is a separate, random 256-bit webhook capability held by Infisical and Google
-Apps Script. It cannot authenticate to Gmail, Drive, or the Apps Script API.
-
-`.infisical.yaml` selects the dedicated `gmail2obsidian` project, development
-(`dev`), and `/agents/webhook`. The root AGENTS.md maps the client to that folder.
-The separately provisioned proxied service references `WEBHOOK_PROXY_TOKEN` and
-replaces its exact placeholder in POST bodies only at the selected deployment
-path on `script.google.com`. Metadata alone does not configure that service.
-This source is independent of Gradlab's credentials and the legacy personal
-Agent Vault bundles.
+The optional proxy-token mode authenticates a fixed import trigger without giving
+the client Gmail, Drive or Apps Script API access. Its separate random webhook
+capability stays in the configured proxy and Apps Script; the client receives a
+public placeholder. Normal browser setup and local tests need no secret manager.
 
 The proxy substitutes a token; it does not compute HMAC. The new server mode
 therefore requires exactly `action`, `timestamp`, `requestId`, and `token` in a
@@ -75,61 +66,37 @@ preparation, the owner must do these steps in their own browser:
    the current local `gmail2obsidian.gs` and save. Do not replace `config` or
    create another project. The deployed version already has the required
    manifest scopes and public execute-as-owner web-app settings.
-2. In Infisical, open project **gmail2obsidian**, environment **Development**,
-   folder **/agents/webhook**. Copy the generated **WEBHOOK_PROXY_TOKEN** directly
-   into the same-named Apps Script **Project Settings → Script Properties**
-   field. Do not paste it into chat, files, command arguments or logs. Remove
-   `WEBHOOK_SECRET` if it was previously set and only proxy access is wanted.
+2. Through trusted administration, configure the same random
+   **WEBHOOK_PROXY_TOKEN** in the chosen proxy service and Apps Script
+   **Project Settings → Script Properties**. Keep its value out of chat, source,
+   files, command arguments and logs. Remove `WEBHOOK_SECRET` only when explicitly
+   retiring HMAC access.
 3. Choose **Deploy → Manage deployments → Edit → New version → Deploy** for
    the existing web app. Keep **Execute as: Me** and **Who has access: Anyone**.
    Preserve its deployment ID/URL and keep project sharing **Restricted**.
 
 This key transfer is trusted provisioning, not an ordinary client operation.
-For rotation, replace the token in Infisical and Apps Script together; native
-proxy runs read the new source on launch. No Agent Vault copy/sync is involved.
+For rotation, update both Apps Script and the proxy through trusted
+administration before checking authentication. Ordinary clients never retrieve
+the source value.
 
-### Native client command
+### Webhook client
 
-From this repository root, load only the workflow owner's metadata file. The
-client validates its exact deployment URL, uses no Google cookies or OAuth, and
-records no token, request body, email text or upstream error text in its receipts.
+The standard-library client accepts `check` or `flush` and a private JSON config
+containing `version`, `webhook_url` and `receipt_directory`. Its environment must
+already contain the reviewed proxy settings, process-local CA trust and public
+`WEBHOOK_PROXY_TOKEN=gmail2obsidian_proxy_placeholder`.
 
-```sh
-PATH="$PWD/scripts/no-persistent-ca:$PATH" \
-infisical secrets agent-proxy run \
-  --domain=https://app.infisical.com --path=/agents/webhook \
-  --sandbox=true --unmatched-host=block \
-  --allow-host=script.googleusercontent.com \
-  --allow-write=/Users/tsilva/repos/tsilva/private-workflow/.local/repo-inbox/gmail-webhook/receipts \
-  --set-env=NO_PROXY= --set-env=no_proxy= \
-  -- python3 -B scripts/webhook_client.py check \
-  --config /Users/tsilva/repos/tsilva/private-workflow/.local/repo-inbox/gmail-webhook/config.json
-```
+Require `ok: true` and `status: authenticated` from `check` before an authorized
+import. `flush` sends one request, follows Google's response redirect once without
+forwarding the request body, and writes private receipts. Require `status: complete`
+and establish local Drive sync before filing. Pending, partial or unknown receipts
+need inspection before retrying; preserve the inbox-flush per-item approvals.
 
-Validate metadata and review/remove conflicting inherited `INFISICAL_*` or proxy
-overrides before this command. The client requires the exact placeholder, native
-loopback proxy and local CA environment before startup. The maintained `security`
-shim declines only persistent CA installation; TLS still uses the native CA in
-the child environment. No global application or Keychain trust defaults change.
-
-Only after the manual handoff and a successful `authenticated` check is the route
-ready. For an authorized inbox flush, replace `check` with `flush` once. Require
-`ok: true` and `status: complete`, then establish local Drive sync before filing.
-Pending/partial/unknown receipts are not safe automatic retries. Stable local
-file timestamps alone do not prove cloud sync. Follow the inbox-flush skill's
-per-item questions and write authorization for subsequent filing and cleanup.
-
-### Verification status
-
-The updated server has 28 credential-free tests; the Python client has six tests
-covering endpoint/redirect constraints, placeholders, response filtering and
-private receipts. Nine native fake-key checks passed, including actual body
-substitution, sandbox file/network denial, replay/expiry handling and rejection
-of an unmapped destination path. Fake resources were removed; no persistent CA
-trust was added. After the owner updated the existing deployment and transferred
-the token, the native sandboxed `check` returned `authenticated` on 2026-10-30.
-No Google login or real import was used for that check. Import behavior and local
-Drive synchronization remain unverified until an authorized inbox-flush run.
+Authentication checks wait up to 30 seconds. Import requests wait up to seven
+minutes for the six-minute Apps Script runtime and response redirect. A timeout
+leaves the original receipt unknown; reconcile destinations before another import.
+See [Apps Script quotas](https://developers.google.com/apps-script/guides/services/quotas#current_limitations).
 
 ## Optional legacy HMAC import webhook
 

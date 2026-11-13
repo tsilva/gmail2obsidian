@@ -42,8 +42,11 @@ def require_proxy():
     if os.environ.get("WEBHOOK_PROXY_TOKEN") != PLACEHOLDER:
         raise ValueError("Required Infisical placeholder missing; no credential fallback")
     proxy = urllib.parse.urlsplit(os.environ.get("HTTPS_PROXY", ""))
+    vault_session = (proxy.port == 8283 and proxy.username
+                     and (proxy.password or "").startswith("agv_"))
+    native_proxy = not proxy.username and not proxy.password
     if (proxy.scheme != "http" or proxy.hostname != "127.0.0.1" or not proxy.port
-            or proxy.username or proxy.password or proxy.query or proxy.fragment
+            or not (native_proxy or vault_session) or proxy.query or proxy.fragment
             or proxy.path not in ("", "/") or not os.environ.get("SSL_CERT_FILE")
             or os.environ.get("NO_PROXY") or os.environ.get("no_proxy")):
         raise ValueError("Expected native proxy, local CA, and no proxy bypass")

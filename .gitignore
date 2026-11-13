@@ -52,3 +52,6 @@ logs/
 .clasprc.json
 .claude/*
 config.gs
+
+# Private task evidence
+/.internal/

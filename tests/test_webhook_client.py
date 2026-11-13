@@ -34,6 +34,15 @@ class WebhookClientTests(unittest.TestCase):
             with patch.dict(os.environ, {**good, **change}, clear=True), self.assertRaises(ValueError):
                 client.require_proxy()
 
+    def test_scoped_native_session_proxy_is_accepted(self):
+        good = {"WEBHOOK_PROXY_TOKEN": client.PLACEHOLDER,
+                "HTTPS_PROXY": "http://session:agv_synthetic@127.0.0.1:8283", "SSL_CERT_FILE": "/test/ca.pem"}
+        with patch.dict(os.environ, good, clear=True):
+            client.require_proxy()
+        with patch.dict(os.environ, {**good, "HTTPS_PROXY": "http://session:wrong@127.0.0.1:8283"}, clear=True):
+            with self.assertRaises(ValueError):
+                client.require_proxy()
+
     def test_response_redirect_drops_the_post_body_and_all_request_headers(self):
         handler = client.ResponseRedirect()
         request = urllib.request.Request("https://script.google.com/macros/s/id/exec", data=b'private-body',
